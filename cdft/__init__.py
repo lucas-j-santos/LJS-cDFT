@@ -1,3 +1,3 @@
-from . import dft3d_pcsaft
+from . import dft3d
 from . import pcsaft_eos
 
