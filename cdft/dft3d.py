@@ -212,7 +212,7 @@ class dft_core():
 
         # Hard-Chain Contribution
 
-        if self.Nc == 1 and self.m == ones(self.Nc,device=self.device,dtype=float64): 
+        if self.m == ones(self.Nc,device=self.device,dtype=float64): 
             self.Phi_hc = zeros_like(self.Phi_hs)
         else:
             zeta2 = (pi/6.)*einsum('i...,i,i->...', self.n3_hc, self.m, self.d**2)
@@ -223,7 +223,6 @@ class dft_core():
             temp = (1.0-zeta3)
             ydd = 1.0/temp+(1.5*self.d[:,None,None,None]*zeta2)/temp**2+(0.5*(self.d[:,None,None,None]*zeta2)**2)/temp**3
             
-            self.Phi_hc = zeros_like(self.Phi_hs)
             self.Phi_hc = ((self.m[:,None,None,None]-1.0)*self.rho*((log(self.rho)-1.0)-(log(ydd*self.n2_hc)-1.0))).sum(axis=0)
                 
         self.F_hc = self.Phi_hc.sum()
