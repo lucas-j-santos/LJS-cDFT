@@ -159,25 +159,26 @@ class pcsaft():
 
         return f_res
     
-    def calc_pressure(self, rho, x):
-        
+    def compressibility_factor(self, rho, x):
+
         f_res = self.helmholtz_energy(rho, x)
         df_drho = grad(f_res, rho, create_graph=True)[0]
         Z = 1.0+rho*df_drho
-        P = Z*kB*self.T*rho # J A⁻³
-    
-        return P
+        
+        return Z
     
     def pressure(self, rho, x):
 
-        P = self.calc_pressure(rho, x)*1e30 # Pa
+        Z = self.compressibility_factor(rho, x)
+        P = Z*kB*self.T*rho *1e30 # Pa
         rho.requires_grad=False
         x.requires_grad=False
     
         return P.detach()
 
     def residue(self, rho, x, Psys):
-        Pcalc = self.calc_pressure(rho, x)
+        Z = self.compressibility_factor(rho, x)
+        Pcalc = Z*kB*self.T*rho 
         res = (Pcalc-Psys)/Psys
         return res
 
