@@ -305,16 +305,16 @@ class dft_core():
         self.mu = eos.chemical_potential(bulk_density, composition)
 
         self.Vext = tensor(Vext/self.T,device=self.device,dtype=float64)
-        self.mask = self.Vext >= 50.0
+        self.excluded = self.Vext >= 50.0
         self.valid = self.Vext < 50.0
-        self.Vext[self.mask] = 50.0
+        self.Vext[self.excluded] = 50.0
 
         self.rho = empty((self.Nc,self.points[0],self.points[1],self.points[2]),device=self.device,dtype=float64)
         for i in range(self.Nc):
             self.rho[i] = self.rhob[i]*exp(-0.01*self.Vext[i])
             # self.rho[i] = self.rhob[i] 
 
-        self.rho[self.mask] = 1e-15
+        self.rho[self.excluded] = 1e-15
     
     def equilibrium_density_profile(self, bulk_density, composition, fmt='WB', solver='fire',
                                     alpha0=0.2, dt=0.1, tol=1e-8, max_it=1000, logoutput=False):
