@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from torch import tensor,pi,float64,complex128,log,exp,sqrt
+from torch import tensor,pi,float64,complex128,log,exp
 from torch import empty,empty_like,zeros,zeros_like,ones,ones_like,linspace,arange,clone,einsum,norm,trapz,cuda
 from torch.fft import fftn, ifftn
 from torch.autograd import grad
@@ -73,15 +73,11 @@ class dft_core():
         self.system_size = system_size
         self.points = points 
         self.device = device
-
-        self.m = tensor(self.m,device=device,dtype=float64)
-        self.sigma = tensor(self.sigma,device=device,dtype=float64)
-        self.epsilon = tensor(self.epsilon,device=device,dtype=float64)
         
-        self.d = self.sigma*(1.0-0.12*exp(-3.0*self.epsilon/T))
-        self.R = 0.5*self.d
+        self.d = self.sigma*(1.0-0.12*np.exp(-3.0*self.epsilon/T))
         if self.q is not None:
             self.q2 = 1e-19*self.q**2/(self.m*self.epsilon*kB*self.sigma**5)
+        self.R = 0.5*self.d
 
         self.m_ij = empty((self.Nc,self.Nc),device=self.device,dtype=float64) 
         self.m_ijk = empty((self.Nc,self.Nc,self.Nc),device=self.device,dtype=float64) 
@@ -90,9 +86,9 @@ class dft_core():
 
         for i in range(self.Nc):
             for j in range(self.Nc):
-                self.m_ij[i,j] = min(2.0,sqrt(self.m[i]*self.m[j]))
+                self.m_ij[i,j] = min(2.0,(self.m[i]*self.m[j]).sqrt())
                 self.sigma_ij[i,j] = 0.5*(self.sigma[i]+self.sigma[j])
-                self.epsilon_ij[i,j] = sqrt(self.epsilon[i]*self.epsilon[j])
+                self.epsilon_ij[i,j] = (self.epsilon[i]*self.epsilon[j]).sqrt()
                 for k in range(self.Nc):
                     self.m_ijk[i,j,k] = min(2.0,(self.m[i]*self.m[j]*self.m[k])**(1/3))
 
@@ -130,19 +126,22 @@ class dft_core():
         wdisp_hat = np.empty_like(w2_hat)
 
         for i in range(self.Nc):
-            w2_hat[i] = 4.0*pi*self.R[i].cpu()**2*spherical_jn(0, 2.*pi*self.R[i].cpu()*K)*lancsoz(kx,ky,kz,kcut)
-            w3_hat[i] = (4./3.)*pi*self.R[i].cpu()**3\
-                *(spherical_jn(0, 2.*pi*self.R[i].cpu()*K)+spherical_jn(2, 2.*pi*self.R[i].cpu()*K))*lancsoz(kx,ky,kz,kcut)
+            w2_hat[i] = 4.0*pi*self.R[i]**2*spherical_jn(0, 2.*pi*self.R[i]*K)*lancsoz(kx,ky,kz,kcut)
+            w3_hat[i] = (4./3.)*pi*self.R[i]**3*(spherical_jn(0, 2.*pi*self.R[i]*K)+spherical_jn(2, 2.*pi*self.R[i]*K)) \
+                *lancsoz(kx,ky,kz,kcut)
             w2vec_hat[i,0] = -1j*2.0*pi*Kx*w3_hat[i]
             w2vec_hat[i,1] = -1j*2.0*pi*Ky*w3_hat[i]
             w2vec_hat[i,2] = -1j*2.0*pi*Kz*w3_hat[i]
-            w2hc_hat[i] = spherical_jn(0, 4.*pi*self.R[i].cpu()*K)*lancsoz(kx,ky,kz,kcut)
-            w3hc_hat[i] = (spherical_jn(0, 4.*pi*self.R[i].cpu()*K)+spherical_jn(2, 4.*pi*self.R[i].cpu()*K))\
-                *lancsoz(kx,ky,kz,kcut) 
-            wdisp_hat[i] = (spherical_jn(0, 4.*pi*psi*self.R[i].cpu()*K)+spherical_jn(2, 4.*pi*psi*self.R[i].cpu()*K))\
-                *lancsoz(kx,ky,kz,kcut)
+            w2hc_hat[i] = spherical_jn(0, 4.*pi*self.R[i]*K)*lancsoz(kx,ky,kz,kcut)
+            w3hc_hat[i] = (spherical_jn(0, 4.*pi*self.R[i]*K)+spherical_jn(2, 4.*pi*self.R[i]*K))*lancsoz(kx,ky,kz,kcut) 
+            wdisp_hat[i] = (spherical_jn(0, 4.*pi*psi*self.R[i]*K)+spherical_jn(2, 4.*pi*psi*self.R[i]*K))*lancsoz(kx,ky,kz,kcut)
 
-        if self.q is not None: self.q2 = tensor(self.q2,device=device,dtype=float64) 
+        self.m = self.m.to(device)
+        self.sigma = self.sigma.to(device)
+        self.epsilon = self.epsilon.to(device)
+        self.R = self.R.to(device) 
+        if self.q is not None: self.q2 = self.q2.to(device)
+        self.d = self.d.to(device)
         self.w2_hat = tensor(w2_hat,device=device,dtype=float64)
         self.w3_hat = tensor(w3_hat,device=device,dtype=float64)
         self.w2vec_hat = tensor(w2vec_hat,device=device,dtype=complex128)
