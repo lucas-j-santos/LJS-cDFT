@@ -1,9 +1,9 @@
-# cDFT: Classical Density Functional Theory
+# LJS-cDFT: A classical Density Functional Theory package
 
 ## Express installation
 
 ```
-pip install git+https://github.com/lucas-j-santos/cDFT.git
+pip install git+https://github.com/lucas-j-santos/LJS-cDFT.git
 ```
 
 * online example
@@ -12,8 +12,8 @@ pip install git+https://github.com/lucas-j-santos/cDFT.git
 ## Local dev installation
 
 ```
-git clone https://github.com/lucas-j-santos/cDFT.git
+git clone https://github.com/lucas-j-santos/LJS-cDFT.git
 
-cd cDFT
+cd LJS-cDFT
 pip install -e .
 ```
