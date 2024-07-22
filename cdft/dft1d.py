@@ -60,7 +60,7 @@ def lancsoz(k,M):
 
 class dft_core():
 
-    def __init__(self, pcsaft_parameters, T, system_size, cell_size, device):
+    def __init__(self, pcsaft_parameters, T, system_size, points, device):
 
         self.pcsaft_parameters = pcsaft_parameters
         self.m = self.pcsaft_parameters['m']
@@ -71,7 +71,7 @@ class dft_core():
         self.Nc = len(self.m)
         self.T = T
         self.system_size = system_size
-        self.cell_size = cell_size
+        self.points = points
         self.device = device
         
         self.d = self.sigma*(1.0-0.12*np.exp(-3.0*self.epsilon/T))
@@ -100,9 +100,9 @@ class dft_core():
             self.bnij[i] = ((self.m_ij-1.0)/self.m_ij*((self.m_ij-2.0)/self.m_ij*bq[i,2]+bq[i,1])+bq[i,0])
             self.cnijk[i] = ((self.m_ijk-1.0)/self.m_ijk*((self.m_ijk-2.0)/self.m_ijk*cq[i,2]+cq[i,1])+cq[i,0])
 
-        self.points = int(round((self.system_size/self.cell_size)))+1
+        self.cell_size = system_size/points
 
-        self.z = linspace(0.0, system_size, self.points, dtype=float64)
+        self.z = linspace(0.5*self.cell_size, system_size-0.5*self.cell_size, points, dtype=float64)
         kz = np.fft.fftfreq(self.points, d=self.cell_size)
         kcut = kz.max()
         k = np.abs(kz) 
