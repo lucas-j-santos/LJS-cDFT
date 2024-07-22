@@ -197,7 +197,7 @@ class dft_core():
 
         # Hard-Chain Contribution
 
-        if self.m == ones(self.Nc,device=self.device,dtype=float64): 
+        if self.Nc == 1 and self.m == ones(self.Nc,device=self.device,dtype=float64): 
             self.Phi_hc = zeros_like(self.Phi_hs)
         else:
             zeta2 = (pi/6.)*einsum('i...,i,i->...', self.n3_hc, self.m, self.d**2)
