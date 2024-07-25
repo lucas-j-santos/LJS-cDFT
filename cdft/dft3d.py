@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from torch import tensor,pi,float64,complex128,log,exp
+from torch import tensor,pi,float64,complex128,log,exp,isnan
 from torch import empty,empty_like,zeros,zeros_like,ones,ones_like,linspace,arange,clone,einsum,norm,trapz,cuda
 from torch.fft import fftn, ifftn
 from torch.autograd import grad
@@ -348,6 +348,7 @@ class dft_core():
                 error = norm(F[self.valid])/np.sqrt(self.Nc_dot_points)
                 self.it += 1
                 if error < tol: break
+                if isnan(error): break
                 if logoutput: print(self.it, error)
             toc = time.process_time()
             self.process_time = toc-tic
@@ -400,6 +401,7 @@ class dft_core():
                 error = norm(F[self.valid])/np.sqrt(self.Nc_dot_points)
                 self.it += 1
                 if error < tol: break
+                if isnan(error): break
                 if logoutput: print(self.it, error)
 
             toc = time.process_time()
