@@ -298,16 +298,16 @@ class dft_core():
 
         self.rho.requires_grad=False
     
-    def initial_condition(self, bulk_density, composition, Vext):
+    def initial_condition(self, bulk_density, composition, Vext, potential_cutoff=50.0):
         
         self.rhob = bulk_density*composition
         eos = pcsaft(self.pcsaft_parameters, self.T)
         self.mu = eos.chemical_potential(bulk_density, composition)
 
         self.Vext = tensor(Vext/self.T,device=self.device,dtype=float64)
-        self.excluded = self.Vext >= 50.0
-        self.valid = self.Vext < 50.0
-        self.Vext[self.excluded] = 50.0
+        self.excluded = self.Vext >= potential_cutoff
+        self.valid = self.Vext < potential_cutoff
+        self.Vext[self.excluded] = potential_cutoff
 
         self.rho = empty((self.Nc,self.points[0],self.points[1],self.points[2]),device=self.device,dtype=float64)
         for i in range(self.Nc):
