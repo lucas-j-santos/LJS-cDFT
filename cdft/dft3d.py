@@ -118,7 +118,7 @@ class dft_core():
         Kx, Ky, Kz = np.meshgrid(kx,ky,kz, indexing ='ij')
         K = np.sqrt(Kx**2+Ky**2+Kz**2)
 
-        w2_hat = np.empty((self.Nc,points[0],points[1],points[2]),dtype=np.float64)
+        w2_hat = np.empty((self.Nc,points[0],points[1],points[2]),dtype=np.complex128)
         w3_hat = np.empty_like(w2_hat)
         w2vec_hat = np.empty((self.Nc,3,points[0],points[1],points[2]),dtype=np.complex128)
         w2hc_hat = np.empty_like(w2_hat)
@@ -142,12 +142,12 @@ class dft_core():
         self.d = self.d.to(device)
         self.R = self.R.to(device) 
         if self.q is not None: self.q2 = self.q2.to(device)
-        self.w2_hat = tensor(w2_hat,device=device,dtype=float64)
-        self.w3_hat = tensor(w3_hat,device=device,dtype=float64)
+        self.w2_hat = tensor(w2_hat,device=device,dtype=complex128)
+        self.w3_hat = tensor(w3_hat,device=device,dtype=complex128)
         self.w2vec_hat = tensor(w2vec_hat,device=device,dtype=complex128)
-        self.w2hc_hat = tensor(w2hc_hat,device=self.device,dtype=float64)
-        self.w3hc_hat = tensor(w3hc_hat,device=self.device,dtype=float64) 
-        self.wdisp_hat = tensor(wdisp_hat,device=device,dtype=float64)
+        self.w2hc_hat = tensor(w2hc_hat,device=self.device,dtype=complex128)
+        self.w3hc_hat = tensor(w3hc_hat,device=self.device,dtype=complex128) 
+        self.wdisp_hat = tensor(wdisp_hat,device=device,dtype=complex128)
 
         del kx, ky, kz, K
 
@@ -155,7 +155,7 @@ class dft_core():
 
         self.rho.requires_grad = True
 
-        self.rho_hat = empty((self.Nc,self.points[0],self.points[1],self.points[2]),device=self.device,dtype=float64)
+        self.rho_hat = empty((self.Nc,self.points[0],self.points[1],self.points[2]),device=self.device,dtype=complex128)
         ni = empty((self.Nc, self.points[0],self.points[1],self.points[2]),device=self.device,dtype=float64) 
         self.n0 = zeros_like(ni)
         self.n1 = zeros_like(ni)
@@ -183,7 +183,7 @@ class dft_core():
 
         del ni, nivec
 
-        self.n3[self.n3>=1.0] = 1.0-1e-15
+        self.n3[self.n3>=1.0] = 1.0-1e-16
 
     def functional(self, fmt):
 
@@ -195,6 +195,8 @@ class dft_core():
         f1 = -log(one_minus_n3)
         f2 = one_minus_n3.pow(-1)
         f4 = (self.n3+one_minus_n3**2*log(one_minus_n3))/(36.0*pi*self.n3**2*one_minus_n3**2)
+        mask = self.n3 <= 1e-4
+        f4[mask] = 1/(24*pi)+2/(27*pi)*self.n3[mask]+(5/48*pi)*self.n3[mask]**2
 
         if fmt == 'WB':
 
@@ -204,7 +206,7 @@ class dft_core():
         elif fmt == 'ASWB':
 
             xi = (self.n2vec*self.n2vec).sum(dim=0)/self.n2**2
-            xi[xi>=1.0] = 1.0
+            xi[xi>=1.0] = 1.0-1e-16
 
             self.Phi_hs = f1*self.n0+f2*(self.n1*self.n2-(self.n1vec*self.n2vec).sum(dim=0))+f4*self.n2**3*(1.0-xi)**3
 
@@ -217,7 +219,7 @@ class dft_core():
         else:
             zeta2 = (pi/6.)*einsum('i...,i,i->...', self.n3_hc, self.m, self.d**2)
             zeta3 = (pi/6.)*einsum('i...,i,i->...', self.n3_hc, self.m, self.d**3)
-            zeta3[zeta3>=1.0] = 1.0-1e-15
+            zeta3[zeta3>=1.0] = 1.0-1e-16
 
             ydd = empty_like(self.rho)
             temp = (1.0-zeta3)
@@ -233,7 +235,7 @@ class dft_core():
         xbar = self.ni_disp/n_disp 
         mbar = einsum('i...,i->...', xbar, self.m)
         etabar = (pi/6.0)*einsum('i...,i,i->...', self.ni_disp, self.m, self.d**3) 
-        etabar[etabar>=1.0] = 1.0-1e-15
+        etabar[etabar>=1.0] = 1.0-1e-16
 
         I1 = zeros_like(n_disp)
         I2 = zeros_like(n_disp)   
@@ -314,7 +316,7 @@ class dft_core():
             self.rho[i] = self.rhob[i]*exp(-0.01*self.Vext[i])
             # self.rho[i] = self.rhob[i] 
 
-        self.rho[self.excluded] = 1e-15
+        self.rho[self.excluded] = 0.0
     
     def equilibrium_density_profile(self, bulk_density, composition, fmt='WB', solver='fire',
                                     alpha0=0.2, dt=0.1, tol=1e-8, max_it=1000, logoutput=False):

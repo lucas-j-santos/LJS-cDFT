@@ -168,7 +168,7 @@ class dft_core():
         self.n3_hc = ifft(self.rho_hat*self.w3hc_hat, dim=1).real
         self.ni_disp = ifft(self.rho_hat*self.wdisp_hat, dim=1).real
 
-        self.n3[self.n3>=1.0] = 1.0-1e-15
+        self.n3[self.n3>=1.0] = 1.0-1e-16
 
     def functional(self, fmt):
 
@@ -180,6 +180,8 @@ class dft_core():
         f1 = -log(one_minus_n3)
         f2 = one_minus_n3.pow(-1)
         f4 = (self.n3+one_minus_n3**2*log(one_minus_n3))/(36.0*pi*self.n3**2*one_minus_n3**2)
+        mask = self.n3 <= 1e-4
+        f4[mask] = 1/(24*pi)+2/(27*pi)*self.n3[mask]+(5/48*pi)*self.n3[mask]**2
 
         if fmt == 'WB':
 
@@ -202,7 +204,7 @@ class dft_core():
         else:
             zeta2 = (pi/6.)*einsum('i...,i,i->...', self.n3_hc, self.m, self.d**2)
             zeta3 = (pi/6.)*einsum('i...,i,i->...', self.n3_hc, self.m, self.d**3)
-            zeta3[zeta3>=1.0] = 1.0-1e-15
+            zeta3[zeta3>=1.0] = 1.0-1e-16
 
             ydd = empty_like(self.rho)
             temp = (1.0-zeta3)
@@ -218,7 +220,7 @@ class dft_core():
         xbar = self.ni_disp/n_disp 
         mbar = einsum('i...,i->...', xbar, self.m)
         etabar = (pi/6.0)*einsum('i...,i,i->...', self.ni_disp, self.m, self.d**3) 
-        etabar[etabar>=1.0] = 1.0-1e-15
+        etabar[etabar>=1.0] = 1.0-1e-16
 
         I1 = zeros_like(n_disp)
         I2 = zeros_like(n_disp)   
@@ -296,10 +298,10 @@ class dft_core():
 
         self.rho = empty((self.Nc,self.points),device=self.device,dtype=float64)
         for i in range(self.Nc):
-            # self.rho[i] = self.rhob[i]*exp(-0.01*self.Vext[i])
-            self.rho[i] = self.rhob[i] 
+            self.rho[i] = self.rhob[i]*exp(-0.01*self.Vext[i])
+            # self.rho[i] = self.rhob[i] 
 
-        self.rho[self.excluded] = 1e-15
+        self.rho[self.excluded] = 0.0
     
     def equilibrium_density_profile(self, bulk_density, composition, fmt='WB', solver='fire',
                         alpha0=0.2, dt=0.1, tol=1e-8, max_it=1000, logoutput=False):
