@@ -107,7 +107,7 @@ class dft_core():
         kcut = kz.max()
         k = np.abs(kz) 
 
-        w2_hat = np.empty((self.Nc,self.points),dtype=np.float64)
+        w2_hat = np.empty((self.Nc,self.points),dtype=np.complex128)
         w3_hat = np.empty_like(w2_hat)
         w2vec_hat = np.empty((self.Nc,self.points),dtype=np.complex128)
         w2hc_hat = np.empty_like(w2_hat)
@@ -129,11 +129,11 @@ class dft_core():
         self.d = self.d.to(device)
         self.R = self.R.to(device) 
         if self.q is not None: self.q2 = self.q2.to(device)
-        self.w2_hat = tensor(w2_hat,device=device,dtype=float64)
-        self.w3_hat = tensor(w3_hat,device=device,dtype=float64)
+        self.w2_hat = tensor(w2_hat,device=device,dtype=complex128)
+        self.w3_hat = tensor(w3_hat,device=device,dtype=complex128)
         self.w2vec_hat = tensor(w2vec_hat,device=device,dtype=complex128)
-        self.w2hc_hat = tensor(w2hc_hat,device=self.device,dtype=float64)
-        self.w3hc_hat = tensor(w3hc_hat,device=self.device,dtype=float64) 
+        self.w2hc_hat = tensor(w2hc_hat,device=self.device,dtype=complex128)
+        self.w3hc_hat = tensor(w3hc_hat,device=self.device,dtype=complex128) 
         self.wdisp_hat = tensor(wdisp_hat,device=device,dtype=float64)
 
         del kz, k
