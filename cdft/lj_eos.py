@@ -59,10 +59,6 @@ class lj_eos():
 
         return fres/self.Tstar # fres/N kB T
     
-    # def helmholtz_energy_mfa(self, rho):
-        
-    #     return -(16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*rho
-    
     def compressibility_factor(self, rho):
 
         rho.requires_grad=True
