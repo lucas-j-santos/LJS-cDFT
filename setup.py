@@ -5,10 +5,10 @@ import setuptools
 
 setuptools.setup(
     name="cdft",
-    version="0.0.1",
+    version="0.0.2",
     author="Lucas J. dos Santos", 
-    author_email="lucasjs@eq.ufrj.br", 
-    description="A cDFT-PCSAFT package in Python",
+    author_email="lucasantos.318@gmail.com", 
+    description="A cDFT package in Python",
     # long_description=long_description,
     long_description_content_type="text/markdown", 
     packages=setuptools.find_packages(),
