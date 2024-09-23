@@ -14,16 +14,16 @@ def lancsoz(kx,ky,kz,M):
 
     return np.sinc(kx/M[0])*np.sinc(ky/M[1])*np.sinc(kz/M[2])
 
-def yukawa_ft(k,l,sigma):
+def yukawa_ft(k,sigma,epsilon,l):
     
-    u_hat = 4*pi*\
+    u_hat = -epsilon*\
         np.piecewise(k,[k==0.0,k>0.0],
-                     [sigma**3*(l+1.0)/l**2,
+                     [4*pi*sigma**3*(l+1.0)/l**2,
                       lambda k: 
-                        sigma**2*(l*np.sin(2.0*pi*k*sigma)+2.0*pi*k*np.cos(2.0*pi*k*sigma))/(2.0*pi*k*((2.0*pi*k)**2+l**2))])
+                      (2*sigma**2*(2*k*pi*sigma*np.cos(2*k*pi*sigma)+l*np.sin(2*k*pi*sigma)))/(k*(l**2+4*k**2*pi**2*sigma**2))])
 
     return u_hat
-
+    
 class dft_core():
 
     def __init__(self, parameters, T, system_size, points, device):
@@ -43,13 +43,13 @@ class dft_core():
         self.cell_size = system_size/points
         self.cell_volume = self.cell_size[0]*self.cell_size[1]*self.cell_size[2] 
 
-        self.x = linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0], dtype=float64)
-        self.y = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1], dtype=float64)
-        self.z = linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2], dtype=float64)
+        # self.x = linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0], dtype=float64)
+        # self.y = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1], dtype=float64)
+        # self.z = linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2], dtype=float64)
 
-        # self.x = arange(-0.5*system_size[0], 0.5*system_size[0], self.cell_size[0], dtype=float64)
-        # self.y = arange(-0.5*system_size[1], 0.5*system_size[1], self.cell_size[1], dtype=float64)
-        # self.z = arange(-0.5*system_size[2], 0.5*system_size[2], self.cell_size[2], dtype=float64)
+        self.x = arange(-0.5*system_size[0], 0.5*system_size[0], self.cell_size[0], dtype=float64)
+        self.y = arange(-0.5*system_size[1], 0.5*system_size[1], self.cell_size[1], dtype=float64)
+        self.z = arange(-0.5*system_size[2], 0.5*system_size[2], self.cell_size[2], dtype=float64)
 
         kx = np.fft.fftfreq(points[0], d=self.cell_size[0])
         ky = np.fft.fftfreq(points[1], d=self.cell_size[1])
@@ -72,9 +72,9 @@ class dft_core():
         w2vec_hat[2] = -1j*2.0*pi*Kz*w3_hat
         watt_hat = (spherical_jn(0, 4.0*pi*self.R*K)+spherical_jn(2, 4.0*pi*self.R*K))*lancsoz(kx,ky,kz,kcut)
 
-        l = np.array([2.544944560171335,15.46408896213624])
-        eps = 1.857708161877174*self.epsilon*np.array([-1,1])
-        ulj_hat = (eps[0]*yukawa_ft(K,l[0],self.sigma)+eps[1]*yukawa_ft(K,l[1],self.sigma))*lancsoz(kx,ky,kz,kcut)
+        l = np.array([2.5449445601713343,15.464088962136243])
+        eps = 1.857708161877173*self.epsilon*np.array([1,-1])
+        ulj_hat = (yukawa_ft(K,self.sigma,eps[0],l[0])+yukawa_ft(K,self.sigma,eps[1],l[1]))*lancsoz(kx,ky,kz,kcut)
 
         self.w2_hat = tensor(w2_hat,device=device,dtype=complex128)
         self.w3_hat = tensor(w3_hat,device=device,dtype=complex128)
