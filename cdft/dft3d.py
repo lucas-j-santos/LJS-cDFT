@@ -43,13 +43,13 @@ class dft_core():
         self.cell_size = system_size/points
         self.cell_volume = self.cell_size[0]*self.cell_size[1]*self.cell_size[2] 
 
-        # self.x = linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0], dtype=float64)
-        # self.y = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1], dtype=float64)
-        # self.z = linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2], dtype=float64)
+        self.x = linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0], dtype=float64)
+        self.y = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1], dtype=float64)
+        self.z = linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2], dtype=float64)
 
-        self.x = arange(-0.5*system_size[0], 0.5*system_size[0], self.cell_size[0], dtype=float64)
-        self.y = arange(-0.5*system_size[1], 0.5*system_size[1], self.cell_size[1], dtype=float64)
-        self.z = arange(-0.5*system_size[2], 0.5*system_size[2], self.cell_size[2], dtype=float64)
+        # self.x = arange(-0.5*system_size[0], 0.5*system_size[0], self.cell_size[0], dtype=float64)
+        # self.y = arange(-0.5*system_size[1], 0.5*system_size[1], self.cell_size[1], dtype=float64)
+        # self.z = arange(-0.5*system_size[2], 0.5*system_size[2], self.cell_size[2], dtype=float64)
 
         kx = np.fft.fftfreq(points[0], d=self.cell_size[0])
         ky = np.fft.fftfreq(points[1], d=self.cell_size[1])
@@ -272,7 +272,7 @@ class dft_core():
         self.error = error.cpu()
         Phi = zeros_like(self.Phi_att)
 
-        self.total_molecules = self.rho.cpu().sum()*self.cell_volume
-        # self.total_molecules = trapz(trapz(trapz(self.rho.cpu(), self.x, dim=0), self.y, dim=0), self.z, dim=0)
+        # self.total_molecules = self.rho.cpu().sum()*self.cell_volume
+        self.total_molecules = trapz(trapz(trapz(self.rho.cpu(), self.x, dim=0), self.y, dim=0), self.z, dim=0)
         Phi = self.rho*(log(self.rho)-1.0)+self.rho*(self.Vext-(log(self.rhob)+self.mu))
         self.Omega = (Phi.sum()+self.Fres.detach())*self.cell_volume
