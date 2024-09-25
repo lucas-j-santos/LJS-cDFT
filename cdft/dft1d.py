@@ -14,13 +14,13 @@ def lancsoz(k,M):
 
     return np.sinc(k/M)
 
-def yukawa_ft(k,l,sigma):
+def yukawa_ft(k,sigma,epsilon,l):
     
-    u_hat = 4*pi*\
+    u_hat = -epsilon*\
         np.piecewise(k,[k==0.0,k>0.0],
-                     [sigma**3*(l+1.0)/l**2,
+                     [4*pi*sigma**3*(l+1.0)/l**2,
                       lambda k: 
-                        sigma**2*(l*np.sin(2.0*pi*k*sigma)+2.0*pi*k*np.cos(2.0*pi*k*sigma))/(2.0*pi*k*((2.0*pi*k)**2+l**2))])
+                      (2*sigma**2*(2*k*pi*sigma*np.cos(2*k*pi*sigma)+l*np.sin(2*k*pi*sigma)))/(k*(l**2+4*k**2*pi**2*sigma**2))])
 
     return u_hat
 
@@ -60,9 +60,9 @@ class dft_core():
         w2vec_hat = -1j*2.0*pi*kz*w3_hat
         watt_hat = (spherical_jn(0, 4.0*pi*self.R*k)+spherical_jn(2, 4.0*pi*self.R*k))*lancsoz(kz,kcut)
 
-        l = np.array([2.544944560171335,15.46408896213624])
-        eps = 1.857708161877174*self.epsilon*np.array([-1,1])
-        ulj_hat = (eps[0]*yukawa_ft(k,l[0],self.sigma)+eps[1]*yukawa_ft(k,l[1],self.sigma))*lancsoz(kz,kcut)
+        l = np.array([2.5449445601713343,15.464088962136243])
+        eps = 1.857708161877173*self.epsilon*np.array([1,-1])
+        ulj_hat = (yukawa_ft(k,self.sigma,eps[0],l[0])+yukawa_ft(k,self.sigma,eps[1],l[1]))*lancsoz(kz,kcut)
 
         self.w2_hat = tensor(w2_hat,device=device,dtype=complex128)
         self.w3_hat = tensor(w3_hat,device=device,dtype=complex128)
@@ -261,7 +261,8 @@ class dft_core():
         self.error = error.cpu()
         Phi = empty_like(self.Phi_att)
 
-        self.total_molecules = self.rho.cpu().sum()*self.cell_size
+        # self.total_molecules = self.rho.cpu().sum()*self.cell_size
+        self.total_molecules = trapz(self.rho.cpu(), self.z)
         Phi = self.rho*(log(self.rho)-1.0)+self.rho*(self.Vext-(log(self.rhob)+self.mu))
 
         self.Omega = (Phi.sum()+self.Fres.detach())*self.cell_size
