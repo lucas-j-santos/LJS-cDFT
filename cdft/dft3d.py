@@ -173,8 +173,6 @@ class dft_core():
         # self.rho = self.rhob*exp(-0.01*self.Vext)
         self.rho[:] = self.rhob
 
-        self.rho[self.excluded] = 0.0
-
     def equilibrium_density_profile(self, bulk_density, fmt='WB', solver='fire',
                                     alpha0=0.2, dt=0.1, tol=1e-6, max_it=1000, logoutput=False):
         
@@ -184,6 +182,7 @@ class dft_core():
         self.rhob = self.rhob.to(self.device)
         self.mu = self.mu.to(self.device)
 
+        self.rho[self.excluded] = 0.0
         lnrho = empty_like(self.rho)
         lnrho[self.valid] = log(self.rho[self.valid])
         
