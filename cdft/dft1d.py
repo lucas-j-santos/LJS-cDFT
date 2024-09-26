@@ -60,7 +60,7 @@ class dft_core():
         w2vec_hat = -1j*2.0*pi*kz*w3_hat
         watt_hat = (spherical_jn(0, 4.0*pi*self.R*k)+spherical_jn(2, 4.0*pi*self.R*k))*lancsoz(kz,kcut)
 
-        l = np.array([2.5449445601713343,15.464088962136243])
+        l = np.array([2.544944560171334,15.464088962136243])
         eps = 1.857708161877173*self.epsilon*np.array([1,-1])
         ulj_hat = (yukawa_ft(k,self.sigma,eps[0],l[0])+yukawa_ft(k,self.sigma,eps[1],l[1]))*lancsoz(kz,kcut)
 
