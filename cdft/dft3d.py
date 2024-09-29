@@ -20,7 +20,7 @@ def yukawa_ft(k,sigma,epsilon,l):
         np.piecewise(k,[k==0.0,k>0.0],
                      [4*pi*sigma**3*(l+1.0)/l**2,
                       lambda k: 
-                      (2*sigma**2*(2*k*pi*sigma*np.cos(2*k*pi*sigma)+l*np.sin(2*k*pi*sigma)))/(k*(l**2+4*k**2*pi**2*sigma**2))])
+                      (2*sigma**2*(2*k*pi*sigma*np.cos(2*k*pi*sigma)+l*np.sin(2*k*pi*sigma)))/(k*(l**2+(2*k*pi*sigma)**2))])
 
     return u_hat
     
@@ -182,9 +182,8 @@ class dft_core():
         self.rhob = self.rhob.to(self.device)
         self.mu = self.mu.to(self.device)
 
-        self.rho[self.excluded] = 0.0
-        lnrho = empty_like(self.rho)
-        lnrho[self.valid] = log(self.rho[self.valid])
+        self.rho[self.excluded] = 1e-15
+        lnrho = log(self.rho)
         
         F = empty_like(self.rho)
         self.functional_derivative(fmt)
@@ -271,7 +270,7 @@ class dft_core():
         self.error = error.cpu()
         Phi = zeros_like(self.Phi_att)
 
-        # self.total_molecules = self.rho.cpu().sum()*self.cell_volume
-        self.total_molecules = trapz(trapz(trapz(self.rho.cpu(), self.x, dim=0), self.y, dim=0), self.z, dim=0)
+        self.total_molecules = self.rho.cpu().sum()*self.cell_volume
+        # self.total_molecules = trapz(trapz(trapz(self.rho.cpu(), self.x, dim=0), self.y, dim=0), self.z, dim=0)
         Phi = self.rho*(log(self.rho)-1.0)+self.rho*(self.Vext-(log(self.rhob)+self.mu))
         self.Omega = (Phi.sum()+self.Fres.detach())*self.cell_volume

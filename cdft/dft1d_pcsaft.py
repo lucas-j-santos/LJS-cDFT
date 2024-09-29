@@ -298,10 +298,10 @@ class dft_core():
 
         self.rho = empty((self.Nc,self.points),device=self.device,dtype=float64)
         for i in range(self.Nc):
-            self.rho[i] = self.rhob[i]*exp(-0.01*self.Vext[i])
-            # self.rho[i] = self.rhob[i] 
+            # self.rho[i] = self.rhob[i]*exp(-0.01*self.Vext[i])
+            self.rho[i] = self.rhob[i] 
 
-        self.rho[self.excluded] = 0.0
+        self.rho[self.excluded] = 1e-16
     
     def equilibrium_density_profile(self, bulk_density, composition, fmt='WB', solver='fire',
                         alpha0=0.2, dt=0.1, tol=1e-8, max_it=1000, logoutput=False):
@@ -313,11 +313,12 @@ class dft_core():
         self.rhob = self.rhob.to(self.device)
         self.mu = self.mu.to(self.device)
 
-        lnrho = log(self.rho)
+        lnrho = empty_like(self.rho)
+        lnrho[self.valid] = log(self.rho[self.valid])
 
         F = empty_like(self.rho)
         self.functional_derivative(fmt)
-        F = log(self.rhob[:,None])+self.mu[:,None]-self.dFres-self.Vext-lnrho
+        F[self.valid] = log(self.rhob[:,None])+self.mu[:,None]-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
         
         self.Nc_dot_points = self.Nc*self.points
         error = norm(F[self.valid])/np.sqrt(self.Nc_dot_points)
@@ -331,7 +332,7 @@ class dft_core():
                 lnrho[self.valid] += alpha*F[self.valid]
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.functional_derivative(fmt) 
-                F = log(self.rhob[:,None])+self.mu[:,None]-self.dFres-self.Vext-lnrho
+                F[self.valid] = log(self.rhob[:,None])+self.mu[:,None]-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
                 error = norm(F[self.valid])/np.sqrt(self.Nc_dot_points)
                 self.it += 1
                 if error < tol: break
@@ -382,7 +383,7 @@ class dft_core():
                 lnrho[self.valid] += dt*V[self.valid]
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.functional_derivative(fmt)
-                F = log(self.rhob[:,None])+self.mu[:,None]-self.dFres-self.Vext-lnrho
+                F[self.valid] = log(self.rhob[:,None])+self.mu[:,None]-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
                 V[self.valid] += 0.5*dt*F[self.valid]
 
                 error = norm(F[self.valid])/np.sqrt(self.Nc_dot_points)

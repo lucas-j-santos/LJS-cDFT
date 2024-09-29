@@ -20,7 +20,7 @@ def yukawa_ft(k,sigma,epsilon,l):
         np.piecewise(k,[k==0.0,k>0.0],
                      [4*pi*sigma**3*(l+1.0)/l**2,
                       lambda k: 
-                      (2*sigma**2*(2*k*pi*sigma*np.cos(2*k*pi*sigma)+l*np.sin(2*k*pi*sigma)))/(k*(l**2+4*k**2*pi**2*sigma**2))])
+                      (2*sigma**2*(2*k*pi*sigma*np.cos(2*k*pi*sigma)+l*np.sin(2*k*pi*sigma)))/(k*(l**2+(2*k*pi*sigma)**2))])
 
     return u_hat
 
@@ -161,6 +161,7 @@ class dft_core():
         # self.rho = self.rhob*exp(-0.01*self.Vext)
         self.rho[:] = self.rhob
 
+
     def equilibrium_density_profile(self, bulk_density, fmt='WB', solver='fire',
                                     alpha0=0.2, dt=0.1, tol=1e-6, max_it=1000, logoutput=False):
         
@@ -170,9 +171,8 @@ class dft_core():
         self.rhob = self.rhob.to(self.device)
         self.mu = self.mu.to(self.device)
 
-        self.rho[self.excluded] = 0.0
-        lnrho = empty_like(self.rho)
-        lnrho[self.valid] = log(self.rho[self.valid])
+        self.rho[self.excluded] = 1e-15
+        lnrho = log(self.rho)
 
         F = empty_like(self.rho)
         self.functional_derivative(fmt)
@@ -260,8 +260,8 @@ class dft_core():
         self.error = error.cpu()
         Phi = empty_like(self.Phi_att)
 
-        # self.total_molecules = self.rho.cpu().sum()*self.cell_size
-        self.total_molecules = trapz(self.rho.cpu(), self.z)
+        self.total_molecules = self.rho.cpu().sum()*self.cell_size
+        # self.total_molecules = trapz(self.rho.cpu(), self.z)
         Phi = self.rho*(log(self.rho)-1.0)+self.rho*(self.Vext-(log(self.rhob)+self.mu))
 
         self.Omega = (Phi.sum()+self.Fres.detach())*self.cell_size
