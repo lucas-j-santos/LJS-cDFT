@@ -418,9 +418,9 @@ class dft_core():
         self.total_molecules = empty(self.Nc,dtype=float64)
         Phi = zeros_like(self.Phi_disp)
         for i in range(self.Nc):
-            # self.total_molecules[i] = self.rho[i].cpu().sum()*self.cell_volume
-            self.total_molecules[i] = trapz(trapz(trapz(self.rho[i].cpu(), self.x, dim=0),
-                                                  self.y, dim=0), self.z, dim=0)
+            self.total_molecules[i] = self.rho[i].cpu().sum()*self.cell_volume
+            # self.total_molecules[i] = trapz(trapz(trapz(self.rho[i].cpu(), self.x, dim=0),
+            #                                       self.y, dim=0), self.z, dim=0)
             Phi += self.rho[i]*(log(self.rho[i])-1.0)+self.rho[i]*(self.Vext[i]-(log(self.rhob[i])+self.mu[i]))
 
         self.Omega = (Phi.sum()+self.Fres.detach())*self.cell_volume
