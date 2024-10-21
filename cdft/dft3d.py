@@ -270,7 +270,7 @@ class dft_core():
         self.error = error.cpu()
         Phi = zeros_like(self.Phi_att)
 
-        self.total_molecules = self.rho.cpu().sum()*self.cell_volume
+        self.total_molecules = self.rho[self.valid].cpu().sum()*self.cell_volume
         # self.total_molecules = trapz(trapz(trapz(self.rho.cpu(), self.x, dim=0), self.y, dim=0), self.z, dim=0)
         Phi = self.rho*(log(self.rho)-1.0)+self.rho*(self.Vext-(log(self.rhob)+self.mu))
         self.Omega = (Phi.sum()+self.Fres.detach())*self.cell_volume

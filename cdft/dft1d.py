@@ -260,7 +260,7 @@ class dft_core():
         self.error = error.cpu()
         Phi = empty_like(self.Phi_att)
 
-        self.total_molecules = self.rho.cpu().sum()*self.cell_size
+        self.total_molecules = self.rho[self.valid].cpu().sum()*self.cell_size
         # self.total_molecules = trapz(self.rho.cpu(), self.z)
         Phi = self.rho*(log(self.rho)-1.0)+self.rho*(self.Vext-(log(self.rhob)+self.mu))
 

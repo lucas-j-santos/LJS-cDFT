@@ -100,7 +100,7 @@ class lj_eos():
     def residue(self, rho, Psys):
 
         Z = self.compressibility_factor(rho)
-        Pcalc = Z*self.T*rho 
+        Pcalc = Z*kB*self.T*rho 
         res = (Pcalc-Psys)/Psys
         return res
 
@@ -123,8 +123,8 @@ class lj_eos():
             rho0 = phase
 
         for i in range(1000):
-            res = self.residue(rho0.detach(),P/(1e30*kB)).detach() 
-            rho = rho0.detach()-res/self.diff_residue(rho0.detach(),P/(1e30*kB)).detach()
+            res = self.residue(rho0.detach(),P*1e-30).detach() 
+            rho = rho0.detach()-res/self.diff_residue(rho0.detach(),P*1e-30).detach()
             rho0 = clone(rho)
             if abs(res) < 1e-10:
                 break
