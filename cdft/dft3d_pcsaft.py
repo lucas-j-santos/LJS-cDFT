@@ -1,7 +1,7 @@
 import numpy as np
 import time
 from torch import tensor,pi,float64,complex128,log,exp,isnan
-from torch import empty,empty_like,zeros,zeros_like,ones,ones_like,linspace,arange,clone,einsum,norm,trapz,cuda
+from torch import empty,empty_like,zeros,zeros_like,ones,ones_like,linspace,arange,clone,einsum,norm,trapz,cuda,meshgrid
 from torch.fft import fftn, ifftn
 from torch.autograd import grad
 from scipy.special import spherical_jn
@@ -103,13 +103,11 @@ class dft_core():
         self.cell_size = system_size/points
         self.cell_volume = self.cell_size[0]*self.cell_size[1]*self.cell_size[2] 
 
-        self.x = linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0], dtype=float64)
-        self.y = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1], dtype=float64)
-        self.z = linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2], dtype=float64)
+        self.x = linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0],device=device,dtype=float64)
+        self.y = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1],device=device,dtype=float64)
+        self.z = linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2],device=device,dtype=float64)
 
-        # self.x = arange(-0.5*system_size[0], 0.5*system_size[0], self.cell_size[0], dtype=float64)
-        # self.y = arange(-0.5*system_size[1], 0.5*system_size[1], self.cell_size[1], dtype=float64)
-        # self.z = arange(-0.5*system_size[2] ,0.5*system_size[2], self.cell_size[2], dtype=float64)
+        self.X,self.Y,self.Z = meshgrid(self.x, self.y, self.z, indexing='ij')
 
         kx = np.fft.fftfreq(points[0], d=self.cell_size[0])
         ky = np.fft.fftfreq(points[1], d=self.cell_size[1])
@@ -306,17 +304,15 @@ class dft_core():
         eos = pcsaft(self.pcsaft_parameters, self.T)
         self.mu = eos.chemical_potential(bulk_density, composition)
 
-        self.Vext = tensor(Vext/self.T,device=self.device,dtype=float64)
+        self.Vext = Vext/self.T
         self.excluded = self.Vext >= potential_cutoff
         self.valid = self.Vext < potential_cutoff
         self.Vext[self.excluded] = potential_cutoff
 
         self.rho = empty((self.Nc,self.points[0],self.points[1],self.points[2]),device=self.device,dtype=float64)
         for i in range(self.Nc):
-            self.rho[i] = self.rhob[i]*exp(-0.01*self.Vext[i])
-            # self.rho[i] = self.rhob[i] 
-
-        self.rho[self.excluded] = 0.0
+            # self.rho[i] = self.rhob[i]*exp(-0.01*self.Vext[i])
+            self.rho[i] = self.rhob[i] 
     
     def equilibrium_density_profile(self, bulk_density, composition, fmt='WB', solver='fire',
                                     alpha0=0.2, dt=0.1, tol=1e-8, max_it=1000, logoutput=False):
@@ -328,6 +324,7 @@ class dft_core():
         self.rhob = self.rhob.to(self.device)
         self.mu = self.mu.to(self.device)
 
+        self.rho[self.excluded] = 1e-15
         lnrho = log(self.rho)
 
         F = empty_like(self.rho)
