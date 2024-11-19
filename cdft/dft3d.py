@@ -49,9 +49,9 @@ class dft_core():
 
         self.X,self.Y,self.Z = meshgrid(self.x, self.y, self.z, indexing='ij')
 
-        # self.x = arange(-0.5*system_size[0], 0.5*system_size[0], self.cell_size[0], dtype=float64)
-        # self.y = arange(-0.5*system_size[1], 0.5*system_size[1], self.cell_size[1], dtype=float64)
-        # self.z = arange(-0.5*system_size[2], 0.5*system_size[2], self.cell_size[2], dtype=float64)
+        # self.x = arange(-0.5*system_size[0], 0.5*system_size[0], self.cell_size[0],device=device,dtype=float64)
+        # self.y = arange(-0.5*system_size[1], 0.5*system_size[1], self.cell_size[1],device=device,dtype=float64)
+        # self.z = arange(-0.5*system_size[2], 0.5*system_size[2], self.cell_size[2],device=device,dtype=float64)
 
         kx = np.fft.fftfreq(points[0], d=self.cell_size[0])
         ky = np.fft.fftfreq(points[1], d=self.cell_size[1])
