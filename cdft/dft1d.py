@@ -42,7 +42,7 @@ class dft_core():
 
         self.cell_size = system_size/points
 
-        self.z = linspace(0.5*self.cell_size, system_size-0.5*self.cell_size, points, dtype=float64)
+        self.z = linspace(0.5*self.cell_size, system_size-0.5*self.cell_size, points, device=device, dtype=float64)
 
         kz = np.fft.fftfreq(points, d=self.cell_size)
         kcut = kz.max()
@@ -152,7 +152,7 @@ class dft_core():
         self.eos = lj_eos(self.parameters, self.T)
         self.mu = self.eos.chemical_potential(bulk_density)
 
-        self.Vext = tensor(Vext/self.T,device=self.device,dtype=float64)
+        self.Vext = Vext/self.T
         self.excluded = self.Vext >= potential_cutoff
         self.valid = self.Vext < potential_cutoff
         self.Vext[self.excluded] = potential_cutoff
