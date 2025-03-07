@@ -1,7 +1,7 @@
 import numpy as np
 import time
 from torch import tensor,pi,float64,complex128,log,exp,isnan
-from torch import empty,empty_like,zeros,zeros_like,linspace,norm,meshgrid,cuda
+from torch import empty,empty_like,zeros,zeros_like,linspace,stack,matmul,norm,meshgrid,cuda
 from torch.fft import fftn, ifftn
 from torch.linalg import solve
 from torch.autograd import grad
@@ -306,14 +306,14 @@ class dft_core():
                 # Build the Anderson matrix and vector
                 R = zeros((m+1, m+1), device=self.device, dtype=float64)
                 anderson_alpha = zeros(m+1, device=self.device, dtype=float64)
+                
+                if m > 0:
+                    resm_tensor = stack(resm)  # Shape: (m, *points)
+                    R[:m, :m] = matmul(resm_tensor.view(m, -1), resm_tensor.view(m, -1).T)
+                    R[:m, m] = 1.0
+                    R[m, :m] = 1.0
+                R[m, m] = 0.0
 
-                for i in range(m):
-                    for j in range(m):
-                        R[i,j] = (resm[i]*resm[j]).sum()
-                R[m,m] = 0.0
-                for i in range(m):
-                    R[i,m] = 1.0
-                    R[m,i] = 1.0
                 anderson_alpha[m] = 1.0
 
                 # Solve for alpha coefficients
