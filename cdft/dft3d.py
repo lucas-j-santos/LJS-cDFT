@@ -1,8 +1,9 @@
 import numpy as np
 import time
 from torch import tensor,pi,float64,complex128,log,exp,isnan
-from torch import empty,empty_like,zeros,zeros_like,ones,ones_like,linspace,arange,clone,einsum,norm,trapz,cuda,meshgrid
+from torch import empty,empty_like,zeros,zeros_like,linspace,norm,meshgrid,cuda
 from torch.fft import fftn, ifftn
+from torch.linalg import solve
 from torch.autograd import grad
 from scipy.special import spherical_jn
 from .lj_eos import lj_eos
@@ -23,7 +24,7 @@ def yukawa_ft(k,sigma,epsilon,l):
                       (2*sigma**2*(2*k*pi*sigma*np.cos(2*k*pi*sigma)+l*np.sin(2*k*pi*sigma)))/(k*(l**2+(2*k*pi*sigma)**2))])
 
     return u_hat
-    
+
 class dft_core():
 
     def __init__(self, parameters, T, system_size, points, device):
@@ -176,7 +177,8 @@ class dft_core():
         self.rho[:] = self.rhob
 
     def equilibrium_density_profile(self, bulk_density, fmt='WB', solver='fire',
-                                    alpha0=0.2, dt=0.1, tol=1e-6, max_it=1000, logoutput=False):
+                                    alpha0=0.2, dt=0.1, anderson_mmax=5, anderson_damping=0.1, 
+                                    tol=1e-6, max_it=1000, logoutput=False):
         
         self.rhob = bulk_density
         self.mu = self.eos.chemical_potential(bulk_density)
@@ -266,6 +268,76 @@ class dft_core():
             
             del V
 
+        elif solver == 'anderson':
+
+            # Anderson Mixing parameters
+            mmax = anderson_mmax  # Number of previous iterations to store
+            damping = anderson_damping  # Damping coefficient
+
+            # Initialize history buffers
+            resm = []  # Residual history
+            rhom = []  # Solution history
+
+            self.it = 0
+            tic = time.process_time()
+
+            for i in range(max_it):
+
+                # Calculate residual
+                self.functional_derivative(fmt)
+                F[self.valid] = log(self.rhob)+self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+                error = norm(F[self.valid])/np.sqrt(self.points[0]*self.points[1]*self.points[2])
+
+                # Check for convergence
+                if error < tol:
+                    break
+
+                # Store residual and solution
+                resm.append(F[self.valid].clone())
+                rhom.append(lnrho[self.valid].clone())
+
+                # Drop old values if history is full
+                if len(resm) > mmax:
+                    resm.pop(0)
+                    rhom.pop(0)
+
+                m = len(resm)  # Current history size
+
+                # Build the Anderson matrix and vector
+                R = zeros((m + 1, m + 1), device=self.device, dtype=float64)
+                alpha = zeros(m + 1, device=self.device, dtype=float64)
+
+                for i in range(m):
+                    for j in range(m):
+                        R[i, j] = (resm[i] * resm[j]).sum()
+                R[m, m] = 0.0
+                for i in range(m):
+                    R[i, m] = 1.0
+                    R[m, i] = 1.0
+                alpha[m] = 1.0
+
+                # Solve for alpha coefficients
+                try:
+                    alpha = solve(R, alpha)
+                except:
+                    # Fallback to Picard if matrix is singular
+                    alpha = zeros(m + 1, device=self.device, dtype=float64)
+                    alpha[m] = 1.0
+
+                # Update solution using Anderson mixing
+                lnrho[self.valid] = zeros_like(lnrho[self.valid])
+                for j in range(m):
+                    lnrho[self.valid] += alpha[j] * (rhom[j] + damping * resm[j])
+
+                self.rho[self.valid] = exp(lnrho[self.valid])
+                self.it += 1
+
+                if logoutput:
+                    print(self.it, error)
+
+            toc = time.process_time()
+            self.process_time = toc-tic
+
         del F
 
         cuda.empty_cache()
@@ -273,6 +345,5 @@ class dft_core():
         Phi = zeros_like(self.Phi_att)
 
         self.total_molecules = self.rho[self.valid].cpu().sum()*self.cell_volume
-        # self.total_molecules = trapz(trapz(trapz(self.rho.cpu(), self.x, dim=0), self.y, dim=0), self.z, dim=0)
         Phi = self.rho*(log(self.rho)-1.0)+self.rho*(self.Vext-(log(self.rhob)+self.mu))
         self.Omega = (Phi.sum()+self.Fres.detach())*self.cell_volume
