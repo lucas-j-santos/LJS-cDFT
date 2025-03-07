@@ -1,7 +1,7 @@
 import numpy as np
 import time
 from torch import tensor,pi,float64,complex128,log,exp,isnan
-from torch import empty,empty_like,zeros,zeros_like,linspace,eye,norm,meshgrid,cuda
+from torch import empty,empty_like,zeros,zeros_like,linspace,norm,meshgrid,cuda
 from torch.fft import fftn, ifftn
 from torch.linalg import solve
 from torch.autograd import grad
