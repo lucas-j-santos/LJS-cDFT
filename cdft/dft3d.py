@@ -316,9 +316,6 @@ class dft_core():
                     R[m,i] = 1.0
                 anderson_alpha[m] = 1.0
 
-                # Regularize the matrix
-                R = R+1e-10*eye(m+1, device=self.device, dtype=float64)
-
                 # Solve for alpha coefficients
                 try:
                     anderson_alpha = solve(R, anderson_alpha)
