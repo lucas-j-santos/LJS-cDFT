@@ -1,7 +1,7 @@
 import numpy as np
 import time
 from torch import tensor,pi,float64,complex128,log,exp,isnan
-from torch import empty,empty_like,zeros,zeros_like,linspace,norm,meshgrid,cuda
+from torch import empty,empty_like,zeros,zeros_like,linspace,eye,norm,meshgrid,cuda
 from torch.fft import fftn, ifftn
 from torch.linalg import solve
 from torch.autograd import grad
@@ -304,30 +304,33 @@ class dft_core():
                 m = len(resm)  # Current history size
 
                 # Build the Anderson matrix and vector
-                R = zeros((m + 1, m + 1), device=self.device, dtype=float64)
-                alpha = zeros(m + 1, device=self.device, dtype=float64)
+                R = zeros((m+1, m+1), device=self.device, dtype=float64)
+                anderson_alpha = zeros(m+1, device=self.device, dtype=float64)
 
                 for i in range(m):
                     for j in range(m):
-                        R[i, j] = (resm[i] * resm[j]).sum()
-                R[m, m] = 0.0
+                        R[i,j] = (resm[i]*resm[j]).sum()
+                R[m,m] = 0.0
                 for i in range(m):
-                    R[i, m] = 1.0
-                    R[m, i] = 1.0
-                alpha[m] = 1.0
+                    R[i,m] = 1.0
+                    R[m,i] = 1.0
+                anderson_alpha[m] = 1.0
+
+                # Regularize the matrix
+                R = R+1e-10*eye(m+1, device=self.device, dtype=float64)
 
                 # Solve for alpha coefficients
                 try:
-                    alpha = solve(R, alpha)
+                    anderson_alpha = solve(R, anderson_alpha)
                 except:
                     # Fallback to Picard if matrix is singular
-                    alpha = zeros(m + 1, device=self.device, dtype=float64)
-                    alpha[m] = 1.0
+                    anderson_alpha = zeros(m+1, device=self.device, dtype=float64)
+                    anderson_alpha[m] = 1.0
 
                 # Update solution using Anderson mixing
                 lnrho[self.valid] = zeros_like(lnrho[self.valid])
                 for j in range(m):
-                    lnrho[self.valid] += alpha[j] * (rhom[j] + damping * resm[j])
+                    lnrho[self.valid] += anderson_alpha[j]*(rhom[j]+damping*resm[j])
 
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.it += 1
