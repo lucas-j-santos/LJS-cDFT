@@ -289,7 +289,7 @@ class dft_core():
                 error = norm(F[self.valid])/np.sqrt(self.points[0]*self.points[1]*self.points[2])
 
                 # Check for convergence
-                if error < tol:
+                if error < tol or isnan(error):
                     break
 
                 # Store residual and solution
