@@ -192,7 +192,8 @@ class dft_core():
         F = empty_like(self.rho)
         self.functional_derivative(fmt)
         F[self.valid] = log(self.rhob)+self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
-        error = norm(F[self.valid])/np.sqrt(self.points[0]*self.points[1]*self.points[2])
+        self.points_sqrt = np.sqrt(self.points.prod())
+        error = norm(F[self.valid])/self.points_sqrt
 
         if solver == 'picard':
 
@@ -204,7 +205,7 @@ class dft_core():
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.functional_derivative(fmt) 
                 F[self.valid] = log(self.rhob)+self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
-                error = norm(F[self.valid])/np.sqrt(self.points[0]*self.points[1]*self.points[2])
+                error = norm(F[self.valid])/self.points_sqrt
                 self.it += 1
                 if error < tol: break
                 if isnan(error): break
@@ -257,7 +258,7 @@ class dft_core():
                 F[self.valid] = log(self.rhob)+self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
                 V[self.valid] += 0.5*dt*F[self.valid]
 
-                error = norm(F[self.valid])/np.sqrt(self.points[0]*self.points[1]*self.points[2])
+                error = norm(F[self.valid])/self.points_sqrt
                 self.it += 1
                 if error < tol: break
                 if isnan(error): break
@@ -286,7 +287,7 @@ class dft_core():
                 # Calculate residual
                 self.functional_derivative(fmt)
                 F[self.valid] = log(self.rhob)+self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
-                error = norm(F[self.valid])/np.sqrt(self.points[0]*self.points[1]*self.points[2])
+                error = norm(F[self.valid])/self.points_sqrt
 
                 # Check for convergence
                 if error < tol or isnan(error):
