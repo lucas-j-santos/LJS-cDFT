@@ -41,8 +41,9 @@ class dft_core():
         self.d = self.sigma*(1.0+0.2977*self.Tstar)/(1.0+0.33163*self.Tstar+0.0010477*self.Tstar**2)
         self.R = 0.5*self.d
 
+        self.system_volume = self.system_size.prod()
         self.cell_size = system_size/points
-        self.cell_volume = self.cell_size[0]*self.cell_size[1]*self.cell_size[2] 
+        self.cell_volume = self.cell_size.prod() 
 
         self.x = linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0],device=device,dtype=float64)
         self.y = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1],device=device,dtype=float64)
