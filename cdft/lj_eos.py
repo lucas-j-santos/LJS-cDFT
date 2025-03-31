@@ -47,15 +47,12 @@ class lj_eos():
         b = bcoef(self.Tstar)
         gamma = 3.0
         F = exp(-gamma*rhostar**2)
-        G0 = (1-F)/(2*gamma)
-        G1 = -(F*rhostar**2-2*G0)/(2*gamma)
-        G2 = -(F*rhostar**4-4*G1)/(2*gamma)
-        G3 = -(F*rhostar**6-6*G2)/(2*gamma)
-        G4 = -(F*rhostar**8-8*G3)/(2*gamma)
-        G5 = -(F*rhostar**10-10*G4)/(2*gamma)
-        fres = a[0]*rhostar+a[1]*rhostar**2/2+a[2]*rhostar**3/3+a[3]*rhostar**4/4+a[4]*rhostar**5/5+\
-            a[5]*rhostar**6/6+a[6]*rhostar**7/7+a[7]*rhostar**8/8
-        fres += b[0]*G0+b[1]*G1+b[2]*G2+b[3]*G3+b[4]*G4+b[5]*G5 # fres/N epsilon
+        G = [None] * 6
+        G[0] = (1 - F) / (2 * gamma)
+        for i in range(1, 6):
+            G[i] = -(F * rhostar**(2*i) - 2*i*G[i-1]) / (2 * gamma)
+        fres = sum(a[i] * rhostar**(i+1) / (i+1) for i in range(8))
+        fres += sum(b[i] * G[i] for i in range(6))
 
         return fres/self.Tstar # fres/N kB T
     

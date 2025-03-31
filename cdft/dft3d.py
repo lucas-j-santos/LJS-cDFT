@@ -40,21 +40,22 @@ class dft_core():
         
         self.d = self.sigma*(1.0+0.2977*self.Tstar)/(1.0+0.33163*self.Tstar+0.0010477*self.Tstar**2)
         self.R = 0.5*self.d
+        self.R_sq = self.R**2
+        self.R_cu = self.R**3
+        self.four_pi_R_sq = 4.0*pi*self.R_sq
+        self.four_pi_R = 4.0*pi*self.R
 
         self.system_volume = self.system_size.prod()
         self.cell_size = system_size/points
         self.cell_volume = self.cell_size.prod() 
 
+        # Spatial grid
         self.x = linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0],device=device,dtype=float64)
         self.y = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1],device=device,dtype=float64)
         self.z = linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2],device=device,dtype=float64)
-
         self.X,self.Y,self.Z = meshgrid(self.x, self.y, self.z, indexing='ij')
 
-        # self.x = arange(-0.5*system_size[0], 0.5*system_size[0], self.cell_size[0],device=device,dtype=float64)
-        # self.y = arange(-0.5*system_size[1], 0.5*system_size[1], self.cell_size[1],device=device,dtype=float64)
-        # self.z = arange(-0.5*system_size[2], 0.5*system_size[2], self.cell_size[2],device=device,dtype=float64)
-
+        # Frequency grid
         kx = np.fft.fftfreq(points[0], d=self.cell_size[0])
         ky = np.fft.fftfreq(points[1], d=self.cell_size[1])
         kz = np.fft.fftfreq(points[2], d=self.cell_size[2])
@@ -62,23 +63,29 @@ class dft_core():
         Kx, Ky, Kz = np.meshgrid(kx,ky,kz, indexing ='ij')
         K = np.sqrt(Kx**2+Ky**2+Kz**2)
 
+        # Precompute common terms
+        two_pi_R_K = 2.0 * pi * self.R * K
+        four_pi_R_K = 4.0 * pi * self.R * K
+        lanczos_term = lancsoz(kx, ky, kz, kcut)
+
         w2_hat = np.empty((points[0],points[1],points[2]),dtype=np.complex128)
         w3_hat = np.empty_like(w2_hat)
         w2vec_hat = np.empty((3,points[0],points[1],points[2]),dtype=np.complex128)
         watt_hat = np.empty_like(w2_hat)
         ulj_hat = np.empty_like(w2_hat)
         
-        w2_hat = 4.0*pi*self.R**2*spherical_jn(0, 2.0*pi*self.R*K)*lancsoz(kx,ky,kz,kcut)
-        w3_hat = (4./3.)*pi*self.R**3*(spherical_jn(0, 2.0*pi*self.R*K)+spherical_jn(2, 2.0*pi*self.R*K)) \
-            *lancsoz(kx,ky,kz,kcut)
+        # Weight functions in Fourier space
+        w2_hat = self.four_pi_R_sq*spherical_jn(0,two_pi_R_K)*lanczos_term
+        w3_hat = (4./3.)*pi*self.R_cu*(spherical_jn(0, two_pi_R_K)+spherical_jn(2,two_pi_R_K))*lanczos_term
+        watt_hat = (spherical_jn(0, four_pi_R_K)+spherical_jn(2,four_pi_R_K))*lanczos_term
         w2vec_hat[0] = -1j*2.0*pi*Kx*w3_hat
         w2vec_hat[1] = -1j*2.0*pi*Ky*w3_hat
         w2vec_hat[2] = -1j*2.0*pi*Kz*w3_hat
-        watt_hat = (spherical_jn(0, 4.0*pi*self.R*K)+spherical_jn(2, 4.0*pi*self.R*K))*lancsoz(kx,ky,kz,kcut)
+        watt_hat = (spherical_jn(0, 4.0*pi*self.R*K)+spherical_jn(2, 4.0*pi*self.R*K))*lanczos_term
 
         l = np.array([2.544944560171334,15.464088962136243])
         eps = 1.857708161877173*self.epsilon*np.array([1,-1])
-        ulj_hat = (yukawa_ft(K,self.sigma,eps[0],l[0])+yukawa_ft(K,self.sigma,eps[1],l[1]))*lancsoz(kx,ky,kz,kcut)
+        ulj_hat = (yukawa_ft(K,self.sigma,eps[0],l[0])+yukawa_ft(K,self.sigma,eps[1],l[1]))*lanczos_term
 
         self.w2_hat = tensor(w2_hat,device=device,dtype=complex128)
         self.w3_hat = tensor(w3_hat,device=device,dtype=complex128)
@@ -92,16 +99,6 @@ class dft_core():
 
         self.rho.requires_grad = True
 
-        self.rho_hat = empty_like(self.w2_hat)
-        self.n0 = empty_like(self.rho) 
-        self.n1 = empty_like(self.n0)
-        self.n2 = empty_like(self.n0)
-        self.n3 = empty_like(self.n0) 
-        self.n1vec = empty((3,self.points[0],self.points[1],self.points[2]),device=self.device,dtype=float64) 
-        self.n2vec = empty_like(self.n1vec) 
-        self.rhobar = empty_like(self.n0)
-        self.ulj = empty_like(self.n0) 
-
         self.rho_hat = fftn(self.rho)
         self.n2 = ifftn(self.rho_hat*self.w2_hat).real
         self.n0 = self.n2/(4.*pi*self.R**2)
@@ -112,44 +109,55 @@ class dft_core():
         self.rhobar = ifftn(self.rho_hat*self.watt_hat).real
         self.ulj = ifftn(self.rho_hat*self.ulj_hat).real
 
-        self.n3[self.n3>=1.0] = 1.0-1e-16
+        # Clamp n3 values
+        self.n3.clamp_(max=1.0-1e-16)
 
     def functional(self,fmt):
 
         self.weighted_densities()
 
         # Hard-Sphere Contribution 
-
         one_minus_n3 = 1.0-self.n3
         f1 = -log(one_minus_n3)
         f2 = one_minus_n3.pow(-1)
-        f4 = (self.n3+one_minus_n3**2*log(one_minus_n3))/(36.0*pi*self.n3**2*one_minus_n3**2)
+        
+        # Precompute terms for f4
+        n3_sq = self.n3**2
+        f4_numerator = self.n3+one_minus_n3**2*log(one_minus_n3)
+        f4_denominator = 36.0*pi*n3_sq*one_minus_n3**2
+        f4 = f4_numerator/f4_denominator
+
+        # Small n3 approximation
         mask = self.n3 <= 1e-4
-        f4[mask] = 1/(24*pi)+2/(27*pi)*self.n3[mask]+(5/48*pi)*self.n3[mask]**2
+        f4[mask] = 1/(24*pi) + 2/(27*pi)*self.n3[mask] + (5/48*pi)*self.n3[mask]**2
 
         if fmt == 'WB':
 
-            self.Phi_hs = f1*self.n0+f2*(self.n1*self.n2-(self.n1vec*self.n2vec).sum(dim=0)) \
-                +f4*(self.n2**3-3.0*self.n2*(self.n2vec*self.n2vec).sum(dim=0)) 
+            n1_n2 = self.n1 * self.n2
+            n1vec_n2vec = (self.n1vec * self.n2vec).sum(dim=0)
+            n2_sq = self.n2**2
+            n2vec_sq = (self.n2vec * self.n2vec).sum(dim=0)
+            
+            self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*(n2_sq*self.n2-3.0*self.n2*n2vec_sq) 
             
         elif fmt == 'ASWB':
 
-            xi = (self.n2vec*self.n2vec).sum(dim=0)/self.n2**2
-            xi[xi>=1.0] = 1.0
-
-            self.Phi_hs = f1*self.n0+f2*(self.n1*self.n2-(self.n1vec*self.n2vec).sum(dim=0))+f4*self.n2**3*(1.0-xi)**3
+            xi = (self.n2vec * self.n2vec).sum(dim=0) / self.n2**2
+            xi.clamp_(max=1.0)
+            
+            self.Phi_hs = f1*self.n0+f2*(self.n1*self.n2-(self.n1vec * self.n2vec).sum(dim=0))+f4*self.n2**3*(1.0-xi)**3
 
         self.Fhs = self.Phi_hs.sum() 
 
         # Attractive Contribution
-
         eta = self.rhobar*pi*self.d**3/6
-        self.Phi_cor = self.eos.helmholtz_energy(self.rhobar)-(4.0*eta-3.0*eta**2)/((1.0-eta)**2) \
-            +(16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
-        
-        self.Phi_mfa = 0.5*self.rho*self.ulj/self.T
+        eos_term = self.eos.helmholtz_energy(self.rhobar)
+        correction_term = (4.0*eta-3.0*eta**2)/((1.0-eta)**2)
+        constant_term = (16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
 
-        self.Phi_att = self.rhobar*self.Phi_cor+self.Phi_mfa
+        self.Phi_cor = eos_term-correction_term+constant_term
+        self.Phi_mfa = 0.5*self.rho*self.ulj/self.T
+        self.Phi_att = self.rhobar * self.Phi_cor+self.Phi_mfa
         self.Fatt = self.Phi_att.sum() 
 
         self.Fres = self.Fhs+self.Fatt
