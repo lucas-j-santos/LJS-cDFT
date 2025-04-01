@@ -93,7 +93,9 @@ class dft_core():
         self.watt_hat = tensor(watt_hat,device=device,dtype=complex128)
         self.ulj_hat = tensor(ulj_hat,device=device,dtype=complex128) 
 
-        del kx, ky, kz, K
+        # Clear temporary arrays to free memory
+        del kx, ky, kz, Kx, Ky, Kz, K, two_pi_R_K, four_pi_R_K, lanczos_term
+        cuda.empty_cache()
 
     def weighted_densities(self):
 
@@ -103,14 +105,11 @@ class dft_core():
         self.n2 = ifftn(self.rho_hat*self.w2_hat).real
         self.n0 = self.n2/(4.*pi*self.R**2)
         self.n1 = self.n2/(4.*pi*self.R)
-        self.n3 = ifftn(self.rho_hat*self.w3_hat).real
+        self.n3 = ifftn(self.rho_hat*self.w3_hat).real.clamp_(max=1.0-1e-16)
         self.n2vec = ifftn(self.rho_hat*self.w2vec_hat, dim=(1,2,3)).real
         self.n1vec = self.n2vec/(4.*pi*self.R)
         self.rhobar = ifftn(self.rho_hat*self.watt_hat).real
         self.ulj = ifftn(self.rho_hat*self.ulj_hat).real
-
-        # Clamp n3 values
-        self.n3.clamp_(max=1.0-1e-16)
 
     def functional(self,fmt):
 
@@ -152,10 +151,10 @@ class dft_core():
         # Attractive Contribution
         eta = self.rhobar*pi*self.d**3/6
         eos_term = self.eos.helmholtz_energy(self.rhobar)
-        correction_term = (4.0*eta-3.0*eta**2)/((1.0-eta)**2)
-        constant_term = (16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
+        correction_term_hs = (4.0*eta-3.0*eta**2)/((1.0-eta)**2)
+        constant_term_mfa = (16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
 
-        self.Phi_cor = eos_term-correction_term+constant_term
+        self.Phi_cor = eos_term-correction_term_hs+constant_term_mfa
         self.Phi_mfa = 0.5*self.rho*self.ulj/self.T
         self.Phi_att = self.rhobar * self.Phi_cor+self.Phi_mfa
         self.Fatt = self.Phi_att.sum() 
