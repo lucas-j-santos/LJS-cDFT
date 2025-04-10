@@ -57,7 +57,7 @@ class dft_core():
             
             self.H_T = self.H.T
             self.H_inv_T = inv(self.H_T)
-            self.det_H = sin_gamma * np.sqrt(1.0-cos_beta**2-zeta**2)
+            self.det_H = sin_gamma*np.sqrt(1.0-cos_beta**2-zeta**2)
         else:
             self.orthogonal = True
             self.H = tensor([
