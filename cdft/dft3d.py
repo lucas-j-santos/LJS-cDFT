@@ -3,7 +3,7 @@ import time
 from torch import tensor,pi,float64,complex128,log,exp,isnan
 from torch import empty,empty_like,zeros,zeros_like,linspace,stack,matmul,norm,meshgrid,cuda
 from torch.fft import fftn, ifftn
-from torch.linalg import solve
+from torch.linalg import solve, inv
 from torch.autograd import grad
 from scipy.special import spherical_jn
 from .lj_eos import lj_eos
@@ -27,16 +27,45 @@ def yukawa_ft(k,sigma,epsilon,l):
 
 class dft_core():
 
-    def __init__(self, parameters, T, system_size, points, device):
+    def __init__(self, parameters, temperature, system_size, angles, points, device):
 
         self.parameters = parameters
         self.sigma = self.parameters['sigma']
         self.epsilon = self.parameters['epsilon']
-        self.T = T
-        self.Tstar = T/self.epsilon
+        self.T = temperature
+        self.Tstar = self.T/self.epsilon
         self.system_size = system_size
         self.points = points 
         self.device = device
+
+        if angles is not None:
+            self.alpha, self.beta, self.gamma = angles
+            self.orthogonal = False
+            
+            cos_alpha = np.cos(self.alpha)
+            cos_beta = np.cos(self.beta)
+            cos_gamma = np.cos(self.gamma)
+            sin_gamma = np.sin(self.gamma)
+            
+            zeta = (cos_alpha-cos_beta*cos_gamma)/sin_gamma
+            
+            self.H = tensor([
+                [1.0, cos_gamma, cos_beta],
+                [0.0, sin_gamma, zeta],
+                [0.0, 0.0, np.sqrt(1.0-cos_beta**2-zeta**2)]
+            ], device=device, dtype=float64)
+            
+            self.H_T = self.H.T
+            self.H_inv_T = inv(self.H_T)
+            self.det_H = sin_gamma * np.sqrt(1.0-cos_beta**2-zeta**2)
+        else:
+            self.orthogonal = True
+            self.H = tensor([
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0]
+            ], device=device, dtype=float64)
+            self.det_H = 1.0
         
         self.d = self.sigma*(1.0+0.2977*self.Tstar)/(1.0+0.33163*self.Tstar+0.0010477*self.Tstar**2)
         self.R = 0.5*self.d
@@ -45,28 +74,46 @@ class dft_core():
         self.four_pi_R_sq = 4.0*pi*self.R_sq
         self.four_pi_R = 4.0*pi*self.R
 
-        self.system_volume = self.system_size.prod()
+        self.system_volume = self.system_size.prod()*self.det_H
         self.cell_size = system_size/points
-        self.cell_volume = self.cell_size.prod() 
+        self.cell_volume = self.cell_size.prod()*self.det_H 
 
-        # Spatial grid
-        self.x = linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0],device=device,dtype=float64)
-        self.y = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1],device=device,dtype=float64)
-        self.z = linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2],device=device,dtype=float64)
-        self.X,self.Y,self.Z = meshgrid(self.x, self.y, self.z, indexing='ij')
+        # Spatial grid in skewed coordinates  
+        u = linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0],device=device,dtype=float64)
+        v = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1],device=device,dtype=float64)
+        w = linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2],device=device,dtype=float64)
+        self.U, self.V, self.W = meshgrid(u, v, w, indexing='ij')
 
-        # Frequency grid
-        kx = np.fft.fftfreq(points[0], d=self.cell_size[0])
-        ky = np.fft.fftfreq(points[1], d=self.cell_size[1])
-        kz = np.fft.fftfreq(points[2], d=self.cell_size[2])
-        kcut = np.array([kx.max(), ky.max(), kz.max()])
-        Kx, Ky, Kz = np.meshgrid(kx,ky,kz, indexing ='ij')
+        # Transform to cartesian coordinates
+        s = stack([self.U, self.V, self.W], dim=0)
+        r = matmul(self.H, s.view(3, -1)).view(3, points[0], points[1], points[2])
+        self.X, self.Y, self.Z = r[0], r[1], r[2]
+
+        # Frequency grid in skewed coordinates
+        ku = np.fft.fftfreq(points[0], d=self.cell_size[0])
+        kv = np.fft.fftfreq(points[1], d=self.cell_size[1])
+        kw = np.fft.fftfreq(points[2], d=self.cell_size[2])
+
+        # Transform to cartesian frequency space
+        Ku, Kv, Kw = np.meshgrid(ku, kv, kw, indexing='ij')
+        
+        if self.orthogonal:
+            Kx = Ku
+            Ky = Kv
+            Kz = Kw
+        else:
+            Kx = Ku
+            Ky = (Kv-Ku*np.cos(self.gamma))/np.sin(self.gamma)
+            Kz = (Ku*(zeta*np.cos(self.gamma)/np.sin(self.gamma)-np.cos(self.beta))\
+                  -Kv*zeta/np.sin(self.gamma)+Kw)/np.sqrt(1.0-np.cos(self.beta)**2-zeta**2)
+        
         K = np.sqrt(Kx**2+Ky**2+Kz**2)
+        kcut = np.array([ku.max(), kv.max(), kw.max()])
 
         # Precompute common terms
-        two_pi_R_K = 2.0 * pi * self.R * K
+        two_pi_R_K = 2.0*pi*self.R*K
         four_pi_R_K = 4.0 * pi * self.R * K
-        lanczos_term = lancsoz(kx, ky, kz, kcut)
+        lanczos_term = lancsoz(ku, kv, kw, kcut)
 
         w2_hat = np.empty((points[0],points[1],points[2]),dtype=np.complex128)
         w3_hat = np.empty_like(w2_hat)
@@ -94,7 +141,7 @@ class dft_core():
         self.ulj_hat = tensor(ulj_hat,device=device,dtype=complex128) 
 
         # Clear temporary arrays to free memory
-        del kx, ky, kz, Kx, Ky, Kz, K, two_pi_R_K, four_pi_R_K, lanczos_term
+        del ku, kv, kw, Ku, Kv, Kw, K, two_pi_R_K, four_pi_R_K, lanczos_term
         cuda.empty_cache()
 
     def weighted_densities(self):

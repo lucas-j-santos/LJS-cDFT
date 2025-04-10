@@ -31,12 +31,12 @@ def bcoef(Tstar):
 
 class lj_eos():
 
-    def __init__(self, parameters, T):
+    def __init__(self, parameters, temperature):
 
         self.parameters = parameters
         self.sigma = self.parameters['sigma']
         self.epsilon = self.parameters['epsilon']
-        self.T = T
+        self.T = temperature
         self.Tstar = self.T/self.epsilon
         self.d = self.sigma*(1+0.2977*self.Tstar)/(1+0.33163*self.Tstar+1.0477e-3*self.Tstar**2)
 
