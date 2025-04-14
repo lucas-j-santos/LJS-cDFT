@@ -108,7 +108,7 @@ class dft_core():
                   -Kv*zeta/np.sin(self.gamma)+Kw)/np.sqrt(1.0-np.cos(self.beta)**2-zeta**2)
         
         K = np.sqrt(Kx**2+Ky**2+Kz**2)
-        kcut = np.array([ku.max(), kv.max(), kw.max()])
+        kcut = np.array([Kx.max(), Ky.max(), Kz.max()])
 
         # Precompute common terms
         two_pi_R_K = 2.0*pi*self.R*K
@@ -141,7 +141,7 @@ class dft_core():
         self.ulj_hat = tensor(ulj_hat,device=device,dtype=complex128) 
 
         # Clear temporary arrays to free memory
-        del ku, kv, kw, Ku, Kv, Kw, K, two_pi_R_K, four_pi_R_K, lanczos_term
+        del u,v,w,s,r,ku,kv,kw,Ku,Kv,Kw,Kx,Ky,Kz,K,two_pi_R_K,four_pi_R_K,lanczos_term
         cuda.empty_cache()
 
     def weighted_densities(self):
