@@ -154,19 +154,6 @@ class dft_core():
 
         self.rho.requires_grad = True
 
-        self.rho_hat = empty((self.Nc,self.points[0],self.points[1],self.points[2]),device=self.device,dtype=complex128)
-        ni = empty((self.Nc, self.points[0],self.points[1],self.points[2]),device=self.device,dtype=float64) 
-        self.n0 = zeros_like(ni)
-        self.n1 = zeros_like(ni)
-        self.n2 = zeros_like(ni)
-        self.n3 = zeros_like(ni)
-        nivec = empty((self.Nc,3,self.points[0],self.points[1],self.points[2]),device=self.device,dtype=float64) 
-        self.n2vec = zeros_like(nivec)
-        self.n1vec = zeros_like(nivec)
-        self.n2_hc = empty_like(self.rho)
-        self.n3_hc = empty_like(self.rho) 
-        self.ni_disp = empty_like(self.rho)
-
         self.rho_hat = fftn(self.rho, dim=(1,2,3))
         ni = self.m[:,None,None,None]*ifftn(self.rho_hat*self.w2_hat, dim=(1,2,3)).real
         self.n0 = (ni/(4.*pi*self.R[:,None,None,None]**2)).sum(axis=0)
