@@ -8,9 +8,6 @@ from torch.autograd import grad
 from scipy.special import spherical_jn
 from .lj_eos import lj_eos
 
-kB = 1.380649e-23
-NA = 6.02214076e23
-
 def lancsoz(kx,ky,kz,M):
 
     return np.sinc(kx/M[0])*np.sinc(ky/M[1])*np.sinc(kz/M[2])
@@ -37,6 +34,9 @@ class dft_core():
         self.system_size = system_size
         self.points = points 
         self.device = device
+
+        self.kB = 1.380649e-23
+        self.NA = 6.02214076e23
 
         if angles is not None:
             self.alpha, self.beta, self.gamma = angles
@@ -243,8 +243,8 @@ class dft_core():
         # self.rho = self.rhob*exp(-0.01*self.Vext)
         self.rho[:] = self.rhob
 
-    def equilibrium_density_profile(self, bulk_density, fmt='ASWB', solver='fire',
-                                    alpha0=0.2, dt=0.1, anderson_mmax=5, anderson_damping=0.1, 
+    def equilibrium_density_profile(self, bulk_density, fmt='ASWB', solver='anderson',
+                                    alpha0=0.2, dt=0.1, anderson_mmax=10, anderson_damping=0.1, 
                                     tol=1e-6, max_it=1000, logoutput=False):
         
         self.rhob = bulk_density
@@ -404,8 +404,7 @@ class dft_core():
 
         cuda.empty_cache()
         self.error = error.cpu()
-        Phi = zeros_like(self.Phi_att)
 
         self.total_molecules = self.rho[self.valid].cpu().sum()*self.cell_volume
-        Phi = self.rho*(log(self.rho)-1.0)+self.rho*(self.Vext-(log(self.rhob)+self.mu))
+        Phi = self.rho*(log(self.rho)-1.0)+self.rho*(self.Vext-self.mu)
         self.Omega = (Phi.sum()+self.Fres.detach())*self.cell_volume

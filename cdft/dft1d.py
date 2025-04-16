@@ -1,7 +1,7 @@
 import numpy as np
 import time
 from torch import tensor,pi,float64,complex128,log,exp,isnan
-from torch import empty,empty_like,zeros,zeros_like,linspace,stack,matmul,norm,cuda
+from torch import empty,empty_like,zeros,zeros_like,linspace,stack,einsum,norm,cuda
 from torch.fft import fft, ifft
 from torch.linalg import solve
 from torch.autograd import grad
@@ -77,65 +77,74 @@ class dft_core():
 
         self.rho.requires_grad = True
 
-        self.rho_hat = empty_like(self.w2_hat)
-        self.n0 = empty_like(self.rho)
-        self.n1 = empty_like(self.n0)
-        self.n2 = empty_like(self.n0)
-        self.n3 = empty_like(self.n0) 
-        self.n1vec = empty_like(self.n0) 
-        self.n2vec = empty_like(self.n0) 
-        self.rhobar = empty_like(self.n0) 
-        self.ulj = empty_like(self.n0) 
-
         self.rho_hat = fft(self.rho)
         self.n2 = ifft(self.rho_hat*self.w2_hat).real
         self.n0 = self.n2/(4.*pi*self.R**2)
         self.n1 = self.n2/(4.*pi*self.R)
-        self.n3 = ifft(self.rho_hat*self.w3_hat).real
+        self.n3 = ifft(self.rho_hat*self.w3_hat).real.clamp_(max=1.0-1e-16)
         self.n2vec = ifft(self.rho_hat*self.w2vec_hat).real
         self.n1vec = self.n2vec/(4.*pi*self.R)
         self.rhobar = ifft(self.rho_hat*self.watt_hat).real
         self.ulj = ifft(self.rho_hat*self.ulj_hat).real
-
-        self.n3[self.n3>=1.0] = 1.0-1e-16
 
     def functional(self,fmt):
 
         self.weighted_densities()
 
         # Hard-Sphere Contribution 
-
         one_minus_n3 = 1.0-self.n3
+        one_minus_n3_sq = one_minus_n3**2
         f1 = -log(one_minus_n3)
         f2 = one_minus_n3.pow(-1)
-        f4 = (self.n3+one_minus_n3**2*log(one_minus_n3))/(36.0*pi*self.n3**2*one_minus_n3**2)
+        f4 = (self.n3+one_minus_n3_sq*log(one_minus_n3))/(36.0*pi*self.n3**2*one_minus_n3_sq)
+
+        del one_minus_n3, one_minus_n3_sq
+
+        # Small n3 approximation
         mask = self.n3 <= 1e-4
-        f4[mask] = 1/(24*pi)+2/(27*pi)*self.n3[mask]+(5/48*pi)*self.n3[mask]**2
+        f4[mask] = 1/(24*pi) + 2/(27*pi)*self.n3[mask]+(5/48*pi)*self.n3[mask]**2
+
+        del mask
 
         if fmt == 'WB':
 
-            self.Phi_hs = f1*self.n0+f2*(self.n1*self.n2-(self.n1vec*self.n2vec)) \
-                +f4*(self.n2**3-3.0*self.n2*(self.n2vec*self.n2vec)) 
+            n1_n2 = self.n1*self.n2
+            n1vec_n2vec = self.n1vec*self.n2vec
+            n2_sq = self.n2**2
+            n2vec_sq = self.n2vec*self.n2vec
+            
+            self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*(n2_sq*self.n2-3.0*self.n2*n2vec_sq) 
+
+            del f1, f2, f4, n1_n2, n1vec_n2vec, n2_sq, n2vec_sq
             
         elif fmt == 'ASWB':
 
-            xi = (self.n2vec*self.n2vec)/self.n2**2
-            xi[xi>=1.0] = 1.0
+            n1_n2 = self.n1*self.n2
+            n1vec_n2vec = self.n1vec*self.n2vec
+            n2_sq = self.n2**2
+            n2vec_sq = self.n2vec*self.n2vec
 
-            self.Phi_hs = f1*self.n0+f2*(self.n1*self.n2-(self.n1vec*self.n2vec))+f4*self.n2**3*(1.0-xi)**3
+            xi = n2vec_sq/n2_sq
+            xi.clamp_(max=1.0)
+            
+            self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*self.n2**3*(1.0-xi)**3
+
+            del f1, f2, f4, n1_n2, n1vec_n2vec, n2_sq, n2vec_sq, xi
 
         self.Fhs = self.Phi_hs.sum() 
 
         # Attractive Contribution
-
         eta = self.rhobar*pi*self.d**3/6
-        self.Phi_cor = self.eos.helmholtz_energy(self.rhobar)-(4.0*eta-3.0*eta**2)/((1.0-eta)**2) \
-            +(16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
-        
-        self.Phi_mfa = 0.5*self.rho*self.ulj/self.T
+        eos_term = self.eos.helmholtz_energy(self.rhobar)
+        correction_term_hs = (4.0*eta-3.0*eta**2)/((1.0-eta)**2)
+        correction_term_mfa = (16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
 
+        self.Phi_cor = eos_term-correction_term_hs+correction_term_mfa
+        self.Phi_mfa = 0.5*self.rho*self.ulj/self.T
         self.Phi_att = self.rhobar*self.Phi_cor+self.Phi_mfa
         self.Fatt = self.Phi_att.sum() 
+
+        del eta, eos_term, correction_term_hs, correction_term_mfa 
 
         self.Fres = self.Fhs+self.Fatt
 
@@ -151,7 +160,7 @@ class dft_core():
         
         self.rhob = bulk_density
         self.eos = lj_eos(self.parameters, self.T)
-        self.mu = self.eos.chemical_potential(bulk_density)
+        self.mu = self.eos.chemical_potential(bulk_density)+log(self.rhob)
 
         self.Vext = Vext/self.T
         self.excluded = self.Vext >= potential_cutoff
@@ -163,24 +172,21 @@ class dft_core():
         self.rho[:] = self.rhob
 
 
-    def equilibrium_density_profile(self, bulk_density, fmt='WB', solver='fire',
-                                    alpha0=0.2, dt=0.1, anderson_mmax=5, anderson_damping=0.1, 
+    def equilibrium_density_profile(self, bulk_density, fmt='ASWB', solver='anderson',
+                                    alpha0=0.2, dt=0.1, anderson_mmax=10, anderson_damping=0.1, 
                                     tol=1e-6, max_it=1000, logoutput=False):
         
         self.rhob = bulk_density
-        self.mu = self.eos.chemical_potential(bulk_density)
-
-        self.rhob = self.rhob.to(self.device)
-        self.mu = self.mu.to(self.device)
+        self.mu = self.eos.chemical_potential(bulk_density)+log(self.rhob)
 
         self.rho[self.excluded] = 1e-15
         lnrho = log(self.rho)
-
+        
         F = empty_like(self.rho)
         self.functional_derivative(fmt)
-        F[self.valid] = log(self.rhob)+self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
-        
-        error = norm(F[self.valid])/np.sqrt(self.points)
+        F[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+        self.points_sqrt = np.sqrt(self.points)
+        error = norm(F[self.valid])/self.points_sqrt
 
         if solver == 'picard':
 
@@ -191,8 +197,8 @@ class dft_core():
                 lnrho[self.valid] += alpha*F[self.valid]
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.functional_derivative(fmt) 
-                F[self.valid] = log(self.rhob)+self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
-                error = norm(F[self.valid])/np.sqrt(self.points)
+                F[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+                error = norm(F[self.valid])/self.points_sqrt
                 self.it += 1
                 if error < tol: break
                 if isnan(error): break
@@ -242,10 +248,10 @@ class dft_core():
                 lnrho[self.valid] += dt*V[self.valid]
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.functional_derivative(fmt)
-                F[self.valid] = log(self.rhob)+self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+                F[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
                 V[self.valid] += 0.5*dt*F[self.valid]
 
-                error = norm(F[self.valid])/np.sqrt(self.points)
+                error = norm(F[self.valid])/self.points_sqrt
                 self.it += 1
                 if error < tol: break
                 if isnan(error): break
@@ -273,8 +279,8 @@ class dft_core():
 
                 # Calculate residual
                 self.functional_derivative(fmt)
-                F[self.valid] = log(self.rhob)+self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
-                error = norm(F[self.valid])/np.sqrt(self.points)
+                F[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+                error = norm(F[self.valid])/self.points_sqrt
 
                 # Check for convergence
                 if error < tol or isnan(error):
@@ -297,7 +303,7 @@ class dft_core():
                 
                 if m > 0:
                     resm_tensor = stack(resm)  # Shape: (m, *points)
-                    R[:m, :m] = matmul(resm_tensor.view(m, -1), resm_tensor.view(m, -1).T)
+                    R[:m, :m] = einsum('ik,jk->ij', resm_tensor.view(m,-1), resm_tensor.view(m,-1))
                     R[:m, m] = 1.0
                     R[m, :m] = 1.0
                 R[m, m] = 0.0
@@ -313,10 +319,7 @@ class dft_core():
                     anderson_alpha[m] = 1.0
 
                 # Update solution using Anderson mixing
-                lnrho[self.valid] = zeros_like(lnrho[self.valid])
-                for j in range(m):
-                    lnrho[self.valid] += anderson_alpha[j]*(rhom[j]+damping*resm[j])
-
+                lnrho[self.valid] = einsum('i,i...->...', anderson_alpha[:m], (stack(rhom[:m])+damping*stack(resm[:m])))
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.it += 1
 
@@ -330,9 +333,7 @@ class dft_core():
 
         cuda.empty_cache()
         self.error = error.cpu()
-        Phi = empty_like(self.Phi_att)
 
         self.total_molecules = self.rho[self.valid].cpu().sum()*self.cell_size
-        Phi = self.rho*(log(self.rho)-1.0)+self.rho*(self.Vext-(log(self.rhob)+self.mu))
-
+        Phi = self.rho*(log(self.rho)-1.0)+self.rho*(self.Vext-self.mu)
         self.Omega = (Phi.sum()+self.Fres.detach())*self.cell_size

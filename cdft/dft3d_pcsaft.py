@@ -1,7 +1,7 @@
 import numpy as np
 import time
 from torch import tensor,pi,float64,complex128,log,exp,isnan
-from torch import empty,empty_like,zeros,zeros_like,linspace,ones,einsum,stack,matmul,norm,meshgrid,cuda
+from torch import empty,empty_like,zeros,zeros_like,stack,linspace,meshgrid,einsum,norm,cuda
 from torch.fft import fftn, ifftn
 from torch.linalg import solve
 from torch.autograd import grad
@@ -105,10 +105,9 @@ class dft_core():
         self.cell_volume = self.cell_size[0]*self.cell_size[1]*self.cell_size[2] 
 
         self.x = linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0],device=device,dtype=float64)
-        self.y = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1],device=device,dtype=float64)
-        self.z = linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2],device=device,dtype=float64)
-
-        self.X,self.Y,self.Z = meshgrid(self.x, self.y, self.z, indexing='ij')
+        self.y = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1],device=device, dtype=float64)
+        self.z = linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2],device=device, dtype=float64)
+        self.X, self.Y, self.Z = meshgrid(self.x, self.y, self.z, indexing='ij')
 
         kx = np.fft.fftfreq(points[0], d=self.cell_size[0])
         ky = np.fft.fftfreq(points[1], d=self.cell_size[1])
@@ -117,7 +116,7 @@ class dft_core():
         Kx, Ky, Kz = np.meshgrid(kx,ky,kz, indexing ='ij')
         K = np.sqrt(Kx**2+Ky**2+Kz**2)
 
-        w2_hat = np.empty((self.Nc,points[0],points[1],points[2]),dtype=np.complex128)
+        w2_hat = np.empty((self.Nc,points[0],points[1],points[2]),dtype=np.float64)
         w3_hat = np.empty_like(w2_hat)
         w2vec_hat = np.empty((self.Nc,3,points[0],points[1],points[2]),dtype=np.complex128)
         w2hc_hat = np.empty_like(w2_hat)
@@ -141,12 +140,12 @@ class dft_core():
         self.d = self.d.to(device)
         self.R = self.R.to(device) 
         if self.q is not None: self.q2 = self.q2.to(device)
-        self.w2_hat = tensor(w2_hat,device=device,dtype=complex128)
-        self.w3_hat = tensor(w3_hat,device=device,dtype=complex128)
+        self.w2_hat = tensor(w2_hat,device=device,dtype=float64)
+        self.w3_hat = tensor(w3_hat,device=device,dtype=float64)
         self.w2vec_hat = tensor(w2vec_hat,device=device,dtype=complex128)
-        self.w2hc_hat = tensor(w2hc_hat,device=self.device,dtype=complex128)
-        self.w3hc_hat = tensor(w3hc_hat,device=self.device,dtype=complex128) 
-        self.wdisp_hat = tensor(wdisp_hat,device=device,dtype=complex128)
+        self.w2hc_hat = tensor(w2hc_hat,device=self.device,dtype=float64)
+        self.w3hc_hat = tensor(w3hc_hat,device=self.device,dtype=float64) 
+        self.wdisp_hat = tensor(wdisp_hat,device=device,dtype=float64)
 
         del kx, ky, kz, K
 
@@ -169,7 +168,7 @@ class dft_core():
 
         del ni, nivec
 
-        self.n3[self.n3>=1.0] = 1.0-1e-16
+        self.n3[self.n3>=1.0] = 1.0-1e-15
 
     def functional(self, fmt):
 
@@ -181,8 +180,6 @@ class dft_core():
         f1 = -log(one_minus_n3)
         f2 = one_minus_n3.pow(-1)
         f4 = (self.n3+one_minus_n3**2*log(one_minus_n3))/(36.0*pi*self.n3**2*one_minus_n3**2)
-        mask = self.n3 <= 1e-4
-        f4[mask] = 1/(24*pi)+2/(27*pi)*self.n3[mask]+(5/48*pi)*self.n3[mask]**2
 
         if fmt == 'WB':
 
@@ -192,7 +189,7 @@ class dft_core():
         elif fmt == 'ASWB':
 
             xi = (self.n2vec*self.n2vec).sum(dim=0)/self.n2**2
-            xi[xi>=1.0] = 1.0-1e-16
+            xi[xi>=1.0] = 1.0
 
             self.Phi_hs = f1*self.n0+f2*(self.n1*self.n2-(self.n1vec*self.n2vec).sum(dim=0))+f4*self.n2**3*(1.0-xi)**3
 
@@ -200,18 +197,15 @@ class dft_core():
 
         # Hard-Chain Contribution
 
-        if self.m == ones(self.Nc,device=self.device,dtype=float64): 
-            self.Phi_hc = zeros_like(self.Phi_hs)
-        else:
-            zeta2 = (pi/6.)*einsum('i...,i,i->...', self.n3_hc, self.m, self.d**2)
-            zeta3 = (pi/6.)*einsum('i...,i,i->...', self.n3_hc, self.m, self.d**3)
-            zeta3[zeta3>=1.0] = 1.0-1e-16
+        zeta2 = (pi/6.)*einsum('i...,i,i->...', self.n3_hc, self.m, self.d**2)
+        zeta3 = (pi/6.)*einsum('i...,i,i->...', self.n3_hc, self.m, self.d**3)
+        zeta3[zeta3>=1.0] = 1.0-1e-15
 
-            ydd = empty_like(self.rho)
-            temp = (1.0-zeta3)
-            ydd = 1.0/temp+(1.5*self.d[:,None,None,None]*zeta2)/temp**2+(0.5*(self.d[:,None,None,None]*zeta2)**2)/temp**3
-            
-            self.Phi_hc = ((self.m[:,None,None,None]-1.0)*self.rho*((log(self.rho)-1.0)-(log(ydd*self.n2_hc)-1.0))).sum(axis=0)
+        ydd = empty_like(self.rho)
+        temp = (1.0-zeta3)
+        ydd = 1.0/temp+(1.5*self.d[:,None,None,None]*zeta2)/temp**2+(0.5*(self.d[:,None,None,None]*zeta2)**2)/temp**3
+        
+        self.Phi_hc = ((self.m[:,None,None,None]-1.0)*self.rho*((log(self.rho)-1.0)-(log(ydd*self.n2_hc)-1.0))).sum(axis=0)
                 
         self.F_hc = self.Phi_hc.sum()
 
@@ -221,7 +215,7 @@ class dft_core():
         xbar = self.ni_disp/n_disp 
         mbar = einsum('i...,i->...', xbar, self.m)
         etabar = (pi/6.0)*einsum('i...,i,i->...', self.ni_disp, self.m, self.d**3) 
-        etabar[etabar>=1.0] = 1.0-1e-16
+        etabar[etabar>=1.0] = 1.0-1e-15
 
         I1 = zeros_like(n_disp)
         I2 = zeros_like(n_disp)   
@@ -290,9 +284,9 @@ class dft_core():
         
         self.rhob = bulk_density*composition
         eos = pcsaft(self.pcsaft_parameters, self.T)
-        self.mu = eos.chemical_potential(bulk_density, composition)
+        self.mu = eos.chemical_potential(bulk_density, composition)+log(self.rhob)
 
-        self.Vext = Vext/self.T
+        self.Vext = tensor(Vext/self.T,device=self.device,dtype=float64)
         self.excluded = self.Vext >= potential_cutoff
         self.valid = self.Vext < potential_cutoff
         self.Vext[self.excluded] = potential_cutoff
@@ -301,24 +295,24 @@ class dft_core():
         for i in range(self.Nc):
             # self.rho[i] = self.rhob[i]*exp(-0.01*self.Vext[i])
             self.rho[i] = self.rhob[i] 
+
+        # self.rho[self.excluded] = 1e-15
     
     def equilibrium_density_profile(self, bulk_density, composition, fmt='WB', solver='fire',
-                                    alpha0=0.2, dt=0.1, anderson_mmax=5, anderson_damping=0.1, 
-                                    tol=1e-8, max_it=1000, logoutput=False):
+                                    alpha0=0.2, dt=0.1,  anderson_mmax=10, anderson_damping=0.1,
+                                      tol=1e-8, max_it=1000, logoutput=False):
         
         self.rhob = bulk_density*composition 
         eos = pcsaft(self.pcsaft_parameters, self.T)
-        self.mu = eos.chemical_potential(bulk_density, composition)
+        self.mu = eos.chemical_potential(bulk_density, composition)+log(self.rhob)
 
         self.rhob = self.rhob.to(self.device)
         self.mu = self.mu.to(self.device)
-
         self.rho[self.excluded] = 1e-15
         lnrho = log(self.rho)
 
-        F = empty_like(self.rho)
         self.functional_derivative(fmt)
-        F = log(self.rhob[:,None,None,None])+self.mu[:,None,None,None]-self.dFres-self.Vext-lnrho
+        F = self.mu[:,None,None,None]-self.dFres-self.Vext-lnrho
         
         self.Nc_dot_points = self.Nc*self.points[0]*self.points[1]*self.points[2]
         error = norm(F[self.valid])/np.sqrt(self.Nc_dot_points)
@@ -332,7 +326,7 @@ class dft_core():
                 lnrho[self.valid] += alpha*F[self.valid]
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.functional_derivative(fmt) 
-                F = log(self.rhob[:,None,None,None])+self.mu[:,None,None,None]-self.dFres-self.Vext-lnrho
+                F = self.mu[:,None,None,None]-self.dFres-self.Vext-lnrho
                 error = norm(F[self.valid])/np.sqrt(self.Nc_dot_points)
                 self.it += 1
                 if error < tol: break
@@ -383,7 +377,7 @@ class dft_core():
                 lnrho[self.valid] += dt*V[self.valid]
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.functional_derivative(fmt)
-                F = log(self.rhob[:,None,None,None])+self.mu[:,None,None,None]-self.dFres-self.Vext-lnrho
+                F = self.mu[:,None,None,None]-self.dFres-self.Vext-lnrho
                 V[self.valid] += 0.5*dt*F[self.valid]
 
                 error = norm(F[self.valid])/np.sqrt(self.Nc_dot_points)
@@ -414,7 +408,7 @@ class dft_core():
 
                 # Calculate residual
                 self.functional_derivative(fmt)
-                F = log(self.rhob[:,None,None,None])+self.mu[:,None,None,None]-self.dFres-self.Vext-lnrho
+                F = self.mu[:,None,None,None]-self.dFres-self.Vext-lnrho
                 error = norm(F[self.valid])/np.sqrt(self.Nc_dot_points)
 
                 # Check for convergence
@@ -438,7 +432,7 @@ class dft_core():
                 
                 if m > 0:
                     resm_tensor = stack(resm)  # Shape: (m, *points)
-                    R[:m, :m] = matmul(resm_tensor.view(m, -1), resm_tensor.view(m, -1).T)
+                    R[:m, :m] = einsum('ik,jk->ij', resm_tensor.view(m,-1), resm_tensor.view(m,-1))
                     R[:m, m] = 1.0
                     R[m, :m] = 1.0
                 R[m, m] = 0.0
@@ -454,10 +448,7 @@ class dft_core():
                     anderson_alpha[m] = 1.0
 
                 # Update solution using Anderson mixing
-                lnrho[self.valid] = zeros_like(lnrho[self.valid])
-                for j in range(m):
-                    lnrho[self.valid] += anderson_alpha[j]*(rhom[j]+damping*resm[j])
-
+                lnrho[self.valid] = einsum('i,i...->...', anderson_alpha[:m], (stack(rhom[:m])+damping*stack(resm[:m])))
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.it += 1
 
@@ -475,6 +466,6 @@ class dft_core():
         Phi = zeros_like(self.Phi_disp)
         for i in range(self.Nc):
             self.total_molecules[i] = self.rho[i].cpu().sum()*self.cell_volume
-            Phi += self.rho[i]*(log(self.rho[i])-1.0)+self.rho[i]*(self.Vext[i]-(log(self.rhob[i])+self.mu[i]))
+            Phi += self.rho[i]*(log(self.rho[i])-1.0)+self.rho[i]*(self.Vext[i]-self.mu[i])
 
         self.Omega = (Phi.sum()+self.Fres.detach())*self.cell_volume
