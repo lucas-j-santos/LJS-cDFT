@@ -187,7 +187,7 @@ class dft_core():
             
             self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*(n2_sq*self.n2-3.0*self.n2*n2vec_sq) 
 
-            del n1_n2, n1vec_n2vec, n2_sq, n2vec_sq
+            del f1, f2, f4, n1_n2, n1vec_n2vec, n2_sq, n2vec_sq
             
         elif fmt == 'ASWB':
 
@@ -201,7 +201,7 @@ class dft_core():
             
             self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*self.n2**3*(1.0-xi)**3
 
-            del n1_n2, n1vec_n2vec, n2_sq, n2vec_sq, xi
+            del f1, f2, f4, n1_n2, n1vec_n2vec, n2_sq, n2vec_sq, xi
 
         self.Fhs = self.Phi_hs.sum() 
 
