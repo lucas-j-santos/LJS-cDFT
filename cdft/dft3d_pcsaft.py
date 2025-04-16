@@ -175,33 +175,52 @@ class dft_core():
         self.weighted_densities()
 
         # Hard-Sphere Contribution 
-
         one_minus_n3 = 1.0-self.n3
+        one_minus_n3_sq = one_minus_n3**2
         f1 = -log(one_minus_n3)
         f2 = one_minus_n3.pow(-1)
-        f4 = (self.n3+one_minus_n3**2*log(one_minus_n3))/(36.0*pi*self.n3**2*one_minus_n3**2)
+        f4 = (self.n3+one_minus_n3_sq*log(one_minus_n3))/(36.0*pi*self.n3**2*one_minus_n3_sq)
+
+        del one_minus_n3, one_minus_n3_sq
+
+        # Small n3 approximation
+        mask = self.n3 <= 1e-4
+        f4[mask] = 1/(24*pi) + 2/(27*pi)*self.n3[mask]+(5/48*pi)*self.n3[mask]**2
+
+        del mask
 
         if fmt == 'WB':
 
-            self.Phi_hs = f1*self.n0+f2*(self.n1*self.n2-(self.n1vec*self.n2vec).sum(dim=0)) \
-                +f4*(self.n2**3-3.0*self.n2*(self.n2vec*self.n2vec).sum(dim=0)) 
+            n1_n2 = self.n1*self.n2
+            n1vec_n2vec = (self.n1vec*self.n2vec).sum(dim=0)
+            n2_sq = self.n2**2
+            n2vec_sq = (self.n2vec*self.n2vec).sum(dim=0)
+            
+            self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*(n2_sq*self.n2-3.0*self.n2*n2vec_sq) 
+
+            del f1, f2, f4, n1_n2, n1vec_n2vec, n2_sq, n2vec_sq
             
         elif fmt == 'ASWB':
 
-            xi = (self.n2vec*self.n2vec).sum(dim=0)/self.n2**2
-            xi[xi>=1.0] = 1.0
+            n1_n2 = self.n1*self.n2
+            n1vec_n2vec = (self.n1vec*self.n2vec).sum(dim=0)
+            n2_sq = self.n2**2
+            n2vec_sq = (self.n2vec*self.n2vec).sum(dim=0)
 
-            self.Phi_hs = f1*self.n0+f2*(self.n1*self.n2-(self.n1vec*self.n2vec).sum(dim=0))+f4*self.n2**3*(1.0-xi)**3
+            xi = n2vec_sq/n2_sq
+            xi.clamp_(max=1.0)
+            
+            self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*self.n2**3*(1.0-xi)**3
+
+            del f1, f2, f4, n1_n2, n1vec_n2vec, n2_sq, n2vec_sq, xi
 
         self.F_hs = self.Phi_hs.sum() 
 
         # Hard-Chain Contribution
-
         zeta2 = (pi/6.)*einsum('i...,i,i->...', self.n3_hc, self.m, self.d**2)
         zeta3 = (pi/6.)*einsum('i...,i,i->...', self.n3_hc, self.m, self.d**3)
         zeta3[zeta3>=1.0] = 1.0-1e-15
 
-        ydd = empty_like(self.rho)
         temp = (1.0-zeta3)
         ydd = 1.0/temp+(1.5*self.d[:,None,None,None]*zeta2)/temp**2+(0.5*(self.d[:,None,None,None]*zeta2)**2)/temp**3
         
@@ -209,8 +228,9 @@ class dft_core():
                 
         self.F_hc = self.Phi_hc.sum()
 
-        # Dispersive Contribution
+        del zeta2, zeta3, ydd, temp 
 
+        # Dispersive Contribution
         n_disp = self.ni_disp.sum(axis=0) 
         xbar = self.ni_disp/n_disp 
         mbar = einsum('i...,i->...', xbar, self.m)
@@ -238,8 +258,9 @@ class dft_core():
         self.Phi_disp = n_disp*a_disp 
         self.F_disp = self.Phi_disp.sum()
 
-        # Quadrupolar Contribution
+        del I1, I2, mbar, C1, mix1, mix2
 
+        # Quadrupolar Contribution
         if self.q is None:
             self.Phi_qq = zeros_like(self.Phi_hs)
         else:
@@ -267,6 +288,8 @@ class dft_core():
 
             a_qq = f_q2/(1.0-f_q3/f_q2)
             self.Phi_qq = n_disp*a_qq
+
+            del n_disp, xbar, poweta, J2, J3, f_q2, f_q3, a_qq
         
         self.F_qq = self.Phi_qq.sum() 
 
@@ -295,8 +318,6 @@ class dft_core():
         for i in range(self.Nc):
             # self.rho[i] = self.rhob[i]*exp(-0.01*self.Vext[i])
             self.rho[i] = self.rhob[i] 
-
-        # self.rho[self.excluded] = 1e-15
     
     def equilibrium_density_profile(self, bulk_density, composition, fmt='WB', solver='fire',
                                     alpha0=0.2, dt=0.1,  anderson_mmax=10, anderson_damping=0.1,
