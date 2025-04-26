@@ -27,13 +27,13 @@ def yukawa_ft(k,sigma,epsilon,l):
 
 class dft_core():
 
-    def __init__(self, parameters, T, system_size, points, device):
+    def __init__(self, parameters, temperature, system_size, points, device):
 
         self.parameters = parameters
         self.sigma = self.parameters['sigma']
         self.epsilon = self.parameters['epsilon']
-        self.T = T
-        self.Tstar = T/self.epsilon
+        self.T = temperature
+        self.Tstar = self.T/self.epsilon
         self.system_size = system_size
         self.points = points 
         self.device = device

@@ -50,7 +50,7 @@ cq = tensor([
 
 class pcsaft():
 
-    def __init__(self, parameters, T):
+    def __init__(self, parameters, temperature):
 
         self.parameters = parameters
         self.m = self.parameters['m']
@@ -58,7 +58,7 @@ class pcsaft():
         self.epsilon = self.parameters['epsilon']
         try: self.q = self.parameters['q']
         except: self.q = None
-        self.T = T
+        self.T = temperature
         self.Nc = len(self.m)
 
         self.m_ij = empty((self.Nc,self.Nc), dtype=float64) 

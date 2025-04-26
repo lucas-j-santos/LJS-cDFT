@@ -61,7 +61,7 @@ def lancsoz(kx,ky,kz,M):
 
 class dft_core():
 
-    def __init__(self, pcsaft_parameters, T, system_size, points, device):
+    def __init__(self, pcsaft_parameters, temperature, system_size, points, device):
 
         self.pcsaft_parameters = pcsaft_parameters
         self.m = self.pcsaft_parameters['m']
@@ -70,7 +70,7 @@ class dft_core():
         try: self.q = pcsaft_parameters['q']
         except: self.q = None
         self.Nc = len(self.m)
-        self.T = T
+        self.T = temperature
         self.system_size = system_size
         self.points = points 
         self.device = device
