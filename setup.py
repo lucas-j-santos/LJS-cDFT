@@ -5,7 +5,7 @@ import setuptools
 
 setuptools.setup(
     name="cdft",
-    version="0.0.2",
+    version="0.3",
     author="Lucas J. dos Santos", 
     author_email="lucasantos.318@gmail.com", 
     description="A cDFT package in Python",

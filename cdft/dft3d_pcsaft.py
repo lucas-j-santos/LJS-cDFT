@@ -101,8 +101,9 @@ class dft_core():
             self.bnij[i] = ((self.m_ij-1.0)/self.m_ij*((self.m_ij-2.0)/self.m_ij*bq[i,2]+bq[i,1])+bq[i,0])
             self.cnijk[i] = ((self.m_ijk-1.0)/self.m_ijk*((self.m_ijk-2.0)/self.m_ijk*cq[i,2]+cq[i,1])+cq[i,0])
 
+        self.system_volume = self.system_size.prod()
         self.cell_size = system_size/points
-        self.cell_volume = self.cell_size[0]*self.cell_size[1]*self.cell_size[2] 
+        self.cell_volume = self.cell_size.prod()  
 
         self.x = linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0],device=device,dtype=float64)
         self.y = linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1],device=device, dtype=float64)
