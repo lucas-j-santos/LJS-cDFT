@@ -1,7 +1,7 @@
 import numpy as np
 import time
 from torch import tensor,pi,float64,complex128,log,exp,isnan
-from torch import empty,empty_like,zeros,zeros_like,linspace,stack,einsum,norm,meshgrid,cuda
+from torch import empty,empty_like,zeros,zeros_like,linspace,stack,einsum,norm,meshgrid,normal,cuda
 from torch.fft import fftn, ifftn
 from torch.linalg import solve, inv
 from torch.autograd import grad
@@ -184,6 +184,9 @@ class dft_core():
             n1vec_n2vec = (self.n1vec*self.n2vec).sum(dim=0)
             n2_sq = self.n2**2
             n2vec_sq = (self.n2vec*self.n2vec).sum(dim=0)
+
+            n1vec_n2vec.clamp(max=n1_n2)
+            n2vec_sq.clamp(max=n2_sq)
             
             self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*(n2_sq*self.n2-3.0*self.n2*n2vec_sq) 
 
@@ -195,8 +198,10 @@ class dft_core():
             n1vec_n2vec = (self.n1vec*self.n2vec).sum(dim=0)
             n2_sq = self.n2**2
             n2vec_sq = (self.n2vec*self.n2vec).sum(dim=0)
-
             xi = n2vec_sq/n2_sq
+
+            n1vec_n2vec.clamp(max=n1_n2)
+            n2vec_sq.clamp(max=n2_sq)
             xi.clamp_(max=1.0)
             
             self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*self.n2**3*(1.0-xi)**3
@@ -253,11 +258,11 @@ class dft_core():
         self.rho[self.excluded] = 1e-15
         lnrho = log(self.rho)
         
-        F = empty_like(self.rho)
+        EL = empty_like(self.rho)
         self.functional_derivative(fmt)
-        F[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+        EL[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
         self.points_sqrt = np.sqrt(self.points.prod())
-        error = norm(F[self.valid])/self.points_sqrt
+        error = norm(EL[self.valid])/self.points_sqrt
 
         if solver == 'picard':
 
@@ -265,11 +270,11 @@ class dft_core():
             self.it = 0
             tic = time.process_time()
             for i in range(max_it):
-                lnrho[self.valid] += alpha*F[self.valid]
+                lnrho[self.valid] += alpha*EL[self.valid]
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.functional_derivative(fmt) 
-                F[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
-                error = norm(F[self.valid])/self.points_sqrt
+                EL[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+                error = norm(EL[self.valid])/self.points_sqrt
                 self.it += 1
                 if error < tol: break
                 if isnan(error): break
@@ -295,7 +300,7 @@ class dft_core():
 
             for i in range(max_it):
 
-                P = (F[self.valid]*V[self.valid]).sum() 
+                P = (EL[self.valid]*V[self.valid]).sum() 
                 if (P > 0):
                     Npos = Npos+1
                     if Npos > Ndelay:
@@ -314,15 +319,15 @@ class dft_core():
                     self.rho[self.valid] = exp(lnrho[self.valid])
                     self.functional_derivative(fmt) 
 
-                V[self.valid] += 0.5*dt*F[self.valid]
-                V[self.valid] = (1.0-alpha)*V[self.valid]+alpha*F[self.valid]*norm(V[self.valid])/norm(F[self.valid])
+                V[self.valid] += 0.5*dt*EL[self.valid]
+                V[self.valid] = (1.0-alpha)*V[self.valid]+alpha*EL[self.valid]*norm(V[self.valid])/norm(EL[self.valid])
                 lnrho[self.valid] += dt*V[self.valid]
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.functional_derivative(fmt)
-                F[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
-                V[self.valid] += 0.5*dt*F[self.valid]
+                EL[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+                V[self.valid] += 0.5*dt*EL[self.valid]
 
-                error = norm(F[self.valid])/self.points_sqrt
+                error = norm(EL[self.valid])/self.points_sqrt
                 self.it += 1
                 if error < tol: break
                 if isnan(error): break
@@ -350,15 +355,15 @@ class dft_core():
 
                 # Calculate residual
                 self.functional_derivative(fmt)
-                F[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
-                error = norm(F[self.valid])/self.points_sqrt
+                EL[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+                error = norm(EL[self.valid])/self.points_sqrt
 
                 # Check for convergence
                 if error < tol or isnan(error):
                     break
 
                 # Store residual and solution
-                resm.append(F[self.valid].clone())
+                resm.append(EL[self.valid].clone())
                 rhom.append(lnrho[self.valid].clone())
 
                 # Drop old values if history is full
@@ -400,7 +405,7 @@ class dft_core():
             toc = time.process_time()
             self.process_time = toc-tic
 
-        del F
+        del EL
 
         cuda.empty_cache()
         self.error = error.cpu()
