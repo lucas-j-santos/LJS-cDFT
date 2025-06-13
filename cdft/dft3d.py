@@ -202,7 +202,7 @@ class dft_core():
 
             n1vec_n2vec.clamp(max=n1_n2)
             n2vec_sq.clamp(max=n2_sq)
-            xi.clamp_(max=1.0)
+            xi.clamp_(max=1.0-1e-16)
             
             self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*self.n2**3*(1.0-xi)**3
 
