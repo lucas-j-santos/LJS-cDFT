@@ -160,6 +160,61 @@ class dft_core():
         self.dFres = self.dFres.detach()
 
         self.rho.requires_grad=False
+
+    def line_search(self, lnrho, delta_lnrho, res0, fmt):
+        """Line search algorithm for Picard iteration."""
+        alpha = 2.0 
+        # Reduce step until a feasible solution is found
+        for _ in range(8):
+            alpha *= 0.5
+  
+            # Calculate full step
+            lnrho_new = lnrho.clone()
+            lnrho_new[self.valid] += alpha * delta_lnrho[self.valid]
+            rho_new = exp(lnrho_new)
+            
+            try:
+                # Calculate new residual
+                self.rho = rho_new
+                self.functional_derivative(fmt)
+                EL_new = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho_new[self.valid]
+                res2 = norm(EL_new)/self.points_sqrt
+                
+                if res2 > res0:
+                    continue
+                    
+                # Calculate intermediate step
+                lnrho_new = lnrho.clone()
+                lnrho_new[self.valid] += 0.5 * alpha * delta_lnrho[self.valid]
+                rho_new = exp(lnrho_new)
+                
+                self.rho = rho_new
+                self.functional_derivative(fmt)
+                EL_new = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho_new[self.valid]
+                res1 = norm(EL_new)/self.points_sqrt
+                
+                # Estimate optimal alpha
+                denominator = res2 - 2.0 * res1 + res0
+                if abs(denominator) > 1e-16:
+                    alpha_opt = alpha * 0.25 * (res2 - 4.0 * res1 + 3.0 * res0) / denominator
+                else:
+                    continue
+                    
+                # Prohibit negative steps
+                if alpha_opt <= 0.0:
+                    alpha_opt = 0.5 * alpha if res1 < res2 else alpha
+                    
+                # Prohibit too large steps
+                if alpha_opt > alpha:
+                    alpha_opt = alpha
+                    
+                alpha = alpha_opt
+                break
+                
+            except:
+                continue
+                
+        return alpha
     
     def initial_condition(self, bulk_density, Vext, potential_cutoff=50.0):
         
@@ -207,6 +262,30 @@ class dft_core():
                 if error < tol: break
                 if isnan(error): break
                 if logoutput: print(self.it, error)
+            toc = time.process_time()
+            self.process_time = toc-tic
+
+        elif solver == 'picard_ls':  # New Picard with line search method
+            
+            self.it = 0
+            tic = time.process_time()
+            
+            for k in range(max_it):
+                # Calculate residual
+                self.functional_derivative(fmt)
+                EL[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+                error = norm(EL[self.valid])/self.points_sqrt   
+                if logoutput:
+                    print(f"Picard (line search) | {k:>4} | {time.process_time()-tic:7.3f} | {error:.6e}")       
+                if error < tol: break
+                if isnan(error): break    
+                # Line search
+                alpha = self.line_search(lnrho, EL, error, fmt)
+                # Update solution
+                lnrho[self.valid] += alpha * EL[self.valid]
+                self.rho[self.valid] = exp(lnrho[self.valid])
+                self.it += 1
+                
             toc = time.process_time()
             self.process_time = toc-tic
 
