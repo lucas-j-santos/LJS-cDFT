@@ -1,14 +1,14 @@
 import numpy as np
 import torch
 from torch.fft import fftn, ifftn
-from torch.linalg import solve, inv
+from torch.linalg import inv
 from torch.autograd import grad
 from scipy.special import spherical_jn
 from .lj_eos import lj_eos
 from .solver import *
 
-pi = np.pi
 torch.set_default_dtype(torch.float64)
+pi = np.pi
 
 def lancsoz(kx,ky,kz,M):
     return np.sinc(kx/M[0])*np.sinc(ky/M[1])*np.sinc(kz/M[2])
@@ -35,6 +35,9 @@ class dft_core():
         self.system_size = system_size
         self.points = points 
         self.device = device
+
+        self.kB = 1.380649e-23
+        self.NA = 6.02214076e23
 
         if angles is not None:
             self.alpha, self.beta, self.gamma = angles
@@ -230,6 +233,15 @@ class dft_core():
         self.dFres = self.dFres.detach()/self.cell_volume
 
         self.rho.requires_grad=False
+
+    def euler_lagrange(self, lnrho, fmt='ASWB'):
+        
+        self.functional_derivative(fmt)
+        self.res = torch.empty_like(self.rho)
+        self.res[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+
+    def loss(self):
+        return torch.norm(self.res[self.valid])/np.sqrt(self.points.prod())
     
     def initial_condition(self, bulk_density, Vext, potential_cutoff=50.0):
         
@@ -245,15 +257,6 @@ class dft_core():
         self.rho = torch.empty((self.points[0],self.points[1],self.points[2]),device=self.device)
         # self.rho = self.rhob*torch.exp(-0.01*self.Vext)
         self.rho[:] = self.rhob
-
-    def euler_lagrange(self, lnrho, fmt='ASWB'):
-        
-        self.functional_derivative(fmt)
-        self.res = torch.empty_like(self.rho)
-        self.res[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
-
-    def loss(self):
-        return torch.norm(self.res[self.valid])/np.sqrt(self.points.prod())
     
     def equilibrium_density_profile(self, bulk_density, fmt='ASWB', solver='anderson',
                                     alpha0=0.2, dt=0.1, anderson_mmax=10, anderson_damping=0.1, 

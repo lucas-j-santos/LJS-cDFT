@@ -7,9 +7,6 @@ from .pcsaft_eos import pcsaft
 from .solver import *
 
 torch.set_default_dtype(torch.float64)
-
-kB = 1.380649e-23
-NA = 6.02214076e23
 psi = 1.3862
 pi = np.pi
 
@@ -75,6 +72,9 @@ class dft_core():
         self.system_size = system_size
         self.points = points 
         self.device = device
+
+        self.kB = 1.380649e-23
+        self.NA = 6.02214076e23
         
         self.d = self.sigma*(1.0-0.12*np.exp(-3.0*self.epsilon/self.T))
         if self.q is not None:
@@ -309,6 +309,14 @@ class dft_core():
         self.dFres = self.dFres.detach()/self.cell_volume
 
         self.rho.requires_grad=False
+
+    def euler_lagrange(self, lnrho, fmt='ASWB'):
+        
+        self.functional_derivative(fmt)
+        self.res = self.mu[:,None,None,None]-self.dFres-self.Vext-lnrho
+
+    def loss(self):
+        return torch.norm(self.res[self.valid])/np.sqrt(self.Nc*self.points.prod())
     
     def initial_condition(self, bulk_density, composition, Vext, potential_cutoff=50.0):
         
@@ -325,14 +333,6 @@ class dft_core():
         for i in range(self.Nc):
             # self.rho[i] = self.rhob[i]*exp(-0.01*self.Vext[i])
             self.rho[i] = self.rhob[i] 
-
-    def euler_lagrange(self, lnrho, fmt='ASWB'):
-        
-        self.functional_derivative(fmt)
-        self.res = self.mu[:,None,None,None]-self.dFres-self.Vext-lnrho
-
-    def loss(self):
-        return torch.norm(self.res[self.valid])/np.sqrt(self.Nc*self.points.prod())
     
     def equilibrium_density_profile(self, bulk_density, composition, fmt='ASWB', solver='anderson',
                                     alpha0=0.2, dt=0.1,  anderson_mmax=10, anderson_damping=0.1,

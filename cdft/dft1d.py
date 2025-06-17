@@ -163,6 +163,15 @@ class dft_core():
         self.dFres = self.dFres.detach()/self.cell_size
 
         self.rho.requires_grad=False
+
+    def euler_lagrange(self, lnrho, fmt='WB'):
+        
+        self.functional_derivative(fmt)
+        self.res = torch.empty_like(self.rho)
+        self.res[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+
+    def loss(self):
+        return torch.norm(self.res[self.valid])/np.sqrt(self.points)
     
     def initial_condition(self, bulk_density, Vext, potential_cutoff=50.0):
         
@@ -178,15 +187,6 @@ class dft_core():
         self.rho = torch.empty(self.points,device=self.device)
         # self.rho = self.rhob*exp(-0.01*self.Vext)
         self.rho[:] = self.rhob
-
-    def euler_lagrange(self, lnrho, fmt='WB'):
-        
-        self.functional_derivative(fmt)
-        self.res = torch.empty_like(self.rho)
-        self.res[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
-
-    def loss(self):
-        return torch.norm(self.res[self.valid])/np.sqrt(self.points)
 
     def equilibrium_density_profile(self, bulk_density, fmt='WB', solver='anderson',
                                     alpha0=0.2, dt=0.1, anderson_mmax=10, anderson_damping=0.1, 
