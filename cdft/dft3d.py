@@ -234,7 +234,6 @@ class dft_core():
         self.rho.requires_grad=False
 
     def line_search(self, lnrho, delta_lnrho, res0, fmt):
-        """Line search algorithm for Picard iteration."""
         alpha = 2.0 
         # Reduce step until a feasible solution is found
         for _ in range(8):
@@ -337,7 +336,7 @@ class dft_core():
             toc = time.process_time()
             self.process_time = toc-tic
 
-        elif solver == 'picard_ls':  # New Picard with line search method
+        elif solver == 'picard_ls':
 
             self.it = 0
             tic = time.process_time()
@@ -347,10 +346,9 @@ class dft_core():
                 self.functional_derivative(fmt)
                 EL[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
                 error = norm(EL[self.valid])/self.points_sqrt   
-                if logoutput:
-                    print(f"Picard (line search) | {k:>4} | {time.process_time()-tic:7.3f} | {error:.6e}")       
                 if error < tol: break
-                if isnan(error): break    
+                if isnan(error): break
+                if logoutput: print(self.it, error)   
                 # Line search
                 alpha = self.line_search(lnrho, EL, error, fmt)
                 # Update solution
@@ -437,9 +435,7 @@ class dft_core():
                 EL[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
                 error = norm(EL[self.valid])/self.points_sqrt
 
-                # Check for convergence
-                if error < tol or isnan(error):
-                    break
+                if error < tol or isnan(error): break
 
                 # Store residual and solution
                 resm.append(EL[self.valid].clone())
@@ -478,8 +474,7 @@ class dft_core():
                 self.rho[self.valid] = exp(lnrho[self.valid])
                 self.it += 1
 
-                if logoutput:
-                    print(self.it, error)
+                if logoutput: print(self.it, error)
 
             toc = time.process_time()
             self.process_time = toc-tic

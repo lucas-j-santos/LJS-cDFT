@@ -162,7 +162,6 @@ class dft_core():
         self.rho.requires_grad=False
 
     def line_search(self, lnrho, delta_lnrho, res0, fmt):
-        """Line search algorithm for Picard iteration."""
         alpha = 2.0 
         # Reduce step until a feasible solution is found
         for _ in range(8):
@@ -265,7 +264,7 @@ class dft_core():
             toc = time.process_time()
             self.process_time = toc-tic
 
-        elif solver == 'picard_ls':  # New Picard with line search method
+        elif solver == 'picard_ls': 
             
             self.it = 0
             tic = time.process_time()
