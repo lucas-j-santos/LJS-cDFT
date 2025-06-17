@@ -243,8 +243,8 @@ class dft_core():
         self.Vext[self.excluded] = potential_cutoff
 
         self.rho = torch.empty((self.points[0],self.points[1],self.points[2]),device=self.device)
-        self.rho = self.rhob*torch.exp(-0.01*self.Vext)
-        # self.rho[:] = self.rhob
+        # self.rho = self.rhob*torch.exp(-0.01*self.Vext)
+        self.rho[:] = self.rhob
 
     def euler_lagrange(self, lnrho, fmt='ASWB'):
         
