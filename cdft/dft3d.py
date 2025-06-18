@@ -243,7 +243,7 @@ class dft_core():
     def loss(self):
         return torch.norm(self.res[self.valid])/np.sqrt(self.points.prod())
     
-    def initial_condition(self, bulk_density, Vext, potential_cutoff=50.0):
+    def initial_condition(self, bulk_density, Vext, potential_cutoff=50.0, model='bulk'):
         
         self.rhob = bulk_density
         self.eos = lj_eos(self.parameters, self.T)
@@ -255,8 +255,10 @@ class dft_core():
         self.Vext[self.excluded] = potential_cutoff
 
         self.rho = torch.empty((self.points[0],self.points[1],self.points[2]),device=self.device)
-        # self.rho = self.rhob*torch.exp(-0.01*self.Vext)
-        self.rho[:] = self.rhob
+        if model == 'bulk':
+            self.rho[:] = self.rhob
+        elif model == 'ideal':
+            self.rho = self.rhob*torch.exp(-self.Vext)   
     
     def equilibrium_density_profile(self, bulk_density, fmt='ASWB', solver='anderson',
                                     alpha0=0.2, dt=0.1, anderson_mmax=10, anderson_damping=0.1, 
