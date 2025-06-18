@@ -117,6 +117,7 @@ class dft_core():
         kcut = np.array([kx.max(), ky.max(), kz.max()])
         Kx, Ky, Kz = np.meshgrid(kx,ky,kz, indexing ='ij')
         K = np.sqrt(Kx**2+Ky**2+Kz**2)
+        lanczos_term = lancsoz(kx, ky, kz, kcut)
 
         w2_hat = np.empty((self.Nc,points[0],points[1],points[2]),dtype=np.complex128)
         w3_hat = np.empty_like(w2_hat)
@@ -126,15 +127,15 @@ class dft_core():
         wdisp_hat = np.empty_like(w2_hat)
 
         for i in range(self.Nc):
-            w2_hat[i] = 4.0*pi*self.R[i]**2*spherical_jn(0, 2.*pi*self.R[i]*K)*lancsoz(kx,ky,kz,kcut)
+            w2_hat[i] = 4.0*pi*self.R[i]**2*spherical_jn(0, 2.*pi*self.R[i]*K)*lanczos_term
             w3_hat[i] = (4./3.)*pi*self.R[i]**3*(spherical_jn(0, 2.*pi*self.R[i]*K)+spherical_jn(2, 2.*pi*self.R[i]*K)) \
-                *lancsoz(kx,ky,kz,kcut)
+                *lanczos_term
             w2vec_hat[i,0] = -1j*2.0*pi*Kx*w3_hat[i]
             w2vec_hat[i,1] = -1j*2.0*pi*Ky*w3_hat[i]
             w2vec_hat[i,2] = -1j*2.0*pi*Kz*w3_hat[i]
-            w2hc_hat[i] = spherical_jn(0, 4.*pi*self.R[i]*K)*lancsoz(kx,ky,kz,kcut)
-            w3hc_hat[i] = (spherical_jn(0, 4.*pi*self.R[i]*K)+spherical_jn(2, 4.*pi*self.R[i]*K))*lancsoz(kx,ky,kz,kcut) 
-            wdisp_hat[i] = (spherical_jn(0, 4.*pi*psi*self.R[i]*K)+spherical_jn(2, 4.*pi*psi*self.R[i]*K))*lancsoz(kx,ky,kz,kcut)
+            w2hc_hat[i] = spherical_jn(0, 4.*pi*self.R[i]*K)*lanczos_term
+            w3hc_hat[i] = (spherical_jn(0, 4.*pi*self.R[i]*K)+spherical_jn(2, 4.*pi*self.R[i]*K))*lanczos_term
+            wdisp_hat[i] = (spherical_jn(0, 4.*pi*psi*self.R[i]*K)+spherical_jn(2, 4.*pi*psi*self.R[i]*K))*lanczos_term
 
         self.m = self.m.to(device)
         self.sigma = self.sigma.to(device)
