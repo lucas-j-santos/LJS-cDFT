@@ -225,18 +225,21 @@ class dft_core():
         self.F_hs = self.Phi_hs.sum()*self.cell_volume
 
         # Hard-Chain Contribution
-        zeta2 = (pi/6.)*torch.einsum('i...,i,i->...', self.n3_hc, self.m, self.d**2)
-        zeta3 = (pi/6.)*torch.einsum('i...,i,i->...', self.n3_hc, self.m, self.d**3)
-        zeta3[zeta3>=1.0] = 1.0-1e-15
+        if self.Nc == 1 and self.m == torch.ones(self.Nc,device=self.device): 
+            self.F_hc = 0.0
+        else:
+            zeta2 = (pi/6.)*torch.einsum('i...,i,i->...', self.n3_hc, self.m, self.d**2)
+            zeta3 = (pi/6.)*torch.einsum('i...,i,i->...', self.n3_hc, self.m, self.d**3)
+            zeta3[zeta3>=1.0] = 1.0-1e-15
 
-        temp = (1.0-zeta3)
-        ydd = 1.0/temp+(1.5*self.d[:,None,None,None]*zeta2)/temp**2+(0.5*(self.d[:,None,None,None]*zeta2)**2)/temp**3
-        
-        self.Phi_hc = ((self.m[:,None,None,None]-1.0)*self.rho*((torch.log(self.rho)-1.0)-(torch.log(ydd*self.n2_hc)-1.0))).sum(axis=0)
-                
-        self.F_hc = self.Phi_hc.sum()*self.cell_volume
+            temp = (1.0-zeta3)
+            ydd = 1.0/temp+(1.5*self.d[:,None,None,None]*zeta2)/temp**2+(0.5*(self.d[:,None,None,None]*zeta2)**2)/temp**3
+            
+            self.Phi_hc = ((self.m[:,None,None,None]-1.0)*self.rho*((torch.log(self.rho)-1.0)-(torch.log(ydd*self.n2_hc)-1.0))).sum(axis=0)
+                    
+            self.F_hc = self.Phi_hc.sum()*self.cell_volume
 
-        del zeta2, zeta3, ydd, temp 
+            del zeta2, zeta3, ydd, temp 
 
         # Dispersive Contribution
         n_disp = self.ni_disp.sum(axis=0) 
