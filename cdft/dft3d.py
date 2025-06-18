@@ -80,9 +80,9 @@ class dft_core():
         self.cell_volume = self.cell_size.prod()*self.det_H 
 
         # Spatial grid in skewed coordinates  
-        u = torch.linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0],device=device)
-        v = torch.linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1],device=device)
-        w = torch.linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2],device=device)
+        u = torch.linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0], device=device)
+        v = torch.linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1], device=device)
+        w = torch.linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2], device=device)
         self.U, self.V, self.W = torch.meshgrid(u, v, w, indexing='ij')
 
         # Transform to cartesian coordinates
@@ -117,9 +117,9 @@ class dft_core():
         four_pi_R_K = 2.0*two_pi_R_K
         lanczos_term = lancsoz(ku, kv, kw, kcut)
 
-        w2_hat = np.empty((points[0],points[1],points[2]),dtype=np.complex128)
+        w2_hat = np.empty((points[0],points[1],points[2]), dtype=np.complex128)
         w3_hat = np.empty_like(w2_hat)
-        w2vec_hat = np.empty((3,points[0],points[1],points[2]),dtype=np.complex128)
+        w2vec_hat = np.empty((3,points[0],points[1],points[2]), dtype=np.complex128)
         watt_hat = np.empty_like(w2_hat)
         ulj_hat = np.empty_like(w2_hat)
         

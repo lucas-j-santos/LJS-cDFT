@@ -106,9 +106,9 @@ class dft_core():
         self.cell_size = system_size/points
         self.cell_volume = self.cell_size.prod()  
 
-        self.x = torch.linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0],device=device)
-        self.y = torch.linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1],device=device)
-        self.z = torch.linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2],device=device)
+        self.x = torch.linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], points[0], device=device)
+        self.y = torch.linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], points[1], device=device)
+        self.z = torch.linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], points[2], device=device)
         self.X, self.Y, self.Z = torch.meshgrid(self.x, self.y, self.z, indexing='ij')
 
         kx = np.fft.fftfreq(points[0], d=self.cell_size[0])
@@ -142,12 +142,12 @@ class dft_core():
         self.d = self.d.to(device)
         self.R = self.R.to(device) 
         if self.q is not None: self.q2 = self.q2.to(device)
-        self.w2_hat = torch.tensor(w2_hat,device=device,dtype=torch.complex128)
-        self.w3_hat = torch.tensor(w3_hat,device=device,dtype=torch.complex128)
-        self.w2vec_hat = torch.tensor(w2vec_hat,device=device,dtype=torch.complex128)
-        self.w2hc_hat = torch.tensor(w2hc_hat,device=self.device,dtype=torch.complex128)
-        self.w3hc_hat = torch.tensor(w3hc_hat,device=self.device,dtype=torch.complex128) 
-        self.wdisp_hat = torch.tensor(wdisp_hat,device=device,dtype=torch.complex128)
+        self.w2_hat = torch.tensor(w2_hat,device=device)
+        self.w3_hat = torch.tensor(w3_hat,device=device)
+        self.w2vec_hat = torch.tensor(w2vec_hat,device=device)
+        self.w2hc_hat = torch.tensor(w2hc_hat,device=self.device)
+        self.w3hc_hat = torch.tensor(w3hc_hat,device=self.device) 
+        self.wdisp_hat = torch.tensor(wdisp_hat,device=device)
 
         del kx, ky, kz, K
 
