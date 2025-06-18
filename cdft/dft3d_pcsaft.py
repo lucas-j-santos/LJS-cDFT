@@ -78,7 +78,7 @@ class dft_core():
         
         self.d = self.sigma*(1.0-0.12*np.exp(-3.0*self.epsilon/self.T))
         if self.q is not None:
-            self.q2 = 1e-19*self.q**2/(self.m*self.epsilon*kB*self.sigma**5)
+            self.q2 = 1e-19*self.q**2/(self.m*self.epsilon*self.kB*self.sigma**5)
         self.R = 0.5*self.d
 
         self.m_ij = torch.empty((self.Nc,self.Nc),device=self.device) 
