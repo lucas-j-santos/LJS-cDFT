@@ -43,14 +43,18 @@ class dft_core():
         
         self.d = self.sigma*(1.0+0.2977*self.Tstar)/(1.0+0.33163*self.Tstar+0.0010477*self.Tstar**2)
         self.R = 0.5*self.d
-
+        
         self.cell_size = system_size/points
-
         self.z = torch.linspace(0.5*self.cell_size, system_size-0.5*self.cell_size, points, device=device)
 
         kz = np.fft.fftfreq(points, d=self.cell_size)
         kcut = kz.max()
         k = np.abs(kz) 
+
+        # Precompute common terms
+        two_pi_R_K = 2.0*pi*self.R*k
+        four_pi_R_K = 2.0*two_pi_R_K
+        lanczos_term = lancsoz(kz, kcut)
 
         w2_hat = np.empty(points,dtype=np.complex128)
         w3_hat = np.empty_like(w2_hat)
@@ -58,23 +62,24 @@ class dft_core():
         watt_hat = np.empty_like(w2_hat)
         ulj_hat = np.empty_like(w2_hat)
         
-        w2_hat = 4.0*pi*self.R**2*spherical_jn(0, 2.0*pi*self.R*k)*lancsoz(kz,kcut)
-        w3_hat = (4./3.)*pi*self.R**3*(spherical_jn(0, 2.0*pi*self.R*k)+spherical_jn(2, 2.0*pi*self.R*k)) \
-            *lancsoz(kz,kcut)
+        w2_hat = 4.0*pi*self.R**2*spherical_jn(0, two_pi_R_K)*lanczos_term
+        w3_hat = (4./3.)*pi*self.R**3*(spherical_jn(0, two_pi_R_K)+spherical_jn(2, two_pi_R_K)) \
+            *lanczos_term
         w2vec_hat = -1j*2.0*pi*kz*w3_hat
-        watt_hat = (spherical_jn(0, 4.0*pi*self.R*k)+spherical_jn(2, 4.0*pi*self.R*k))*lancsoz(kz,kcut)
+        watt_hat = (spherical_jn(0, four_pi_R_K)+spherical_jn(2, four_pi_R_K))*lanczos_term
 
         l = np.array([2.544944560171334,15.464088962136243])
         eps = 1.857708161877173*self.epsilon*np.array([1,-1])
-        ulj_hat = (yukawa_ft(k,self.sigma,eps[0],l[0])+yukawa_ft(k,self.sigma,eps[1],l[1]))*lancsoz(kz,kcut)
+        ulj_hat = (yukawa_ft(k,self.sigma,eps[0],l[0])+yukawa_ft(k,self.sigma,eps[1],l[1]))*lanczos_term
 
-        self.w2_hat = torch.tensor(w2_hat,device=device,dtype=torch.complex128)
-        self.w3_hat = torch.tensor(w3_hat,device=device,dtype=torch.complex128)
-        self.w2vec_hat = torch.tensor(w2vec_hat,device=device,dtype=torch.complex128)
-        self.watt_hat = torch.tensor(watt_hat,device=device,dtype=torch.complex128)
-        self.ulj_hat = torch.tensor(ulj_hat,device=device,dtype=torch.complex128) 
+        self.w2_hat = torch.tensor(w2_hat,device=device)
+        self.w3_hat = torch.tensor(w3_hat,device=device)
+        self.w2vec_hat = torch.tensor(w2vec_hat,device=device)
+        self.watt_hat = torch.tensor(watt_hat,device=device)
+        self.ulj_hat = torch.tensor(ulj_hat,device=device) 
 
-        del kz, k
+        # Clear temporary arrays to free memory
+        del kz,k,two_pi_R_K,four_pi_R_K,lanczos_term
 
     def weighted_densities(self):
 
