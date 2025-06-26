@@ -148,6 +148,7 @@ class dft_core():
 
         # Attractive Contribution
         eta = self.rhobar*pi*self.d**3/6
+        eta.clamp_(max=1.0-1e-16)
         eos_term = self.eos.helmholtz_energy(self.rhobar)
         correction_term_hs = (4.0*eta-3.0*eta**2)/((1.0-eta)**2)
         correction_term_mfa = (16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
@@ -155,9 +156,9 @@ class dft_core():
         self.Phi_cor = eos_term-correction_term_hs+correction_term_mfa
         self.Phi_mfa = 0.5*self.rho*self.ulj/self.T
         self.Phi_att = self.rhobar*self.Phi_cor+self.Phi_mfa
-        self.Fatt = self.Phi_att.sum()*self.cell_size 
+        self.Fatt = self.Phi_att.sum()*self.cell_size
 
-        del eta, eos_term, correction_term_hs, correction_term_mfa 
+        del eos_term, correction_term_hs, correction_term_mfa 
 
         self.Fres = self.Fhs+self.Fatt
 
@@ -206,6 +207,9 @@ class dft_core():
 
         if solver == 'picard': 
             picard(self,alpha0,tol,max_it,logoutput)
+
+        elif solver == 'picard_ls': 
+            picard_line_search(self,alpha0,tol,max_it,logoutput)
 
         elif solver == 'anderson':
             anderson(self,anderson_mmax,anderson_damping,tol,max_it,logoutput)

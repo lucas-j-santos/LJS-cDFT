@@ -212,6 +212,7 @@ class dft_core():
 
         # Attractive Contribution
         eta = self.rhobar*pi*self.d**3/6
+        eta.clamp_(max=1.0-1e-16)
         eos_term = self.eos.helmholtz_energy(self.rhobar)
         correction_term_hs = (4.0*eta-3.0*eta**2)/((1.0-eta)**2)
         correction_term_mfa = (16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
@@ -270,6 +271,9 @@ class dft_core():
 
         if solver == 'picard': 
             picard(self,alpha0,tol,max_it,logoutput)
+
+        elif solver == 'picard_ls': 
+            picard_line_search(self,alpha0,tol,max_it,logoutput)
 
         elif solver == 'anderson':
             anderson(self,anderson_mmax,anderson_damping,tol,max_it,logoutput)
