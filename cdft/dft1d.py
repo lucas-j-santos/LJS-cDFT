@@ -48,7 +48,8 @@ class dft_core():
         self.z = torch.linspace(0.5*self.cell_size, system_size-0.5*self.cell_size, points, device=device)
 
         kz = np.fft.fftfreq(points, d=self.cell_size)
-        kcut = kz.max()
+        # kcut = kz.max()
+        kcut = (0.5*self.points+1)/self.system_size
         k = np.abs(kz) 
 
         # Precompute common terms

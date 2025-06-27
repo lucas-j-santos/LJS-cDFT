@@ -110,7 +110,8 @@ class dft_core():
                   -Kv*zeta/np.sin(self.gamma)+Kw)/np.sqrt(1.0-np.cos(self.beta)**2-zeta**2)
         
         K = np.sqrt(Kx**2+Ky**2+Kz**2)
-        kcut = np.array([Kx.max(), Ky.max(), Kz.max()])
+        # kcut = np.array([Kx.max(), Ky.max(), Kz.max()])
+        kcut = (0.5*self.points+1)/self.system_size
 
         # Precompute common terms
         two_pi_R_K = 2.0*pi*self.R*K
