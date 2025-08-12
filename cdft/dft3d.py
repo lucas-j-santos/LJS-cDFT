@@ -283,9 +283,6 @@ class dft_core():
         elif solver == 'fire':
             fire(self,alpha0,dt,tol,max_it,logoutput)
 
-        elif solver == 'newton':
-            newton_gmres(self,tol,max_it,gmres_tol,gmres_max_iter,logoutput)
-
         torch.cuda.empty_cache()
         self.error = self.error.cpu()
 
