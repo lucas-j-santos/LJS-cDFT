@@ -1,6 +1,7 @@
 import torch
 import time
 from torch.linalg import solve
+from .gmres import *
 
 class picard():
 

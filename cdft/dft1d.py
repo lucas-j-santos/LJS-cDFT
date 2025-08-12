@@ -199,6 +199,7 @@ class dft_core():
 
     def equilibrium_density_profile(self, bulk_density, fmt='WB', solver='anderson',
                                     alpha0=0.2, dt=0.1, anderson_mmax=10, anderson_damping=0.1, 
+                                    gmres_tol=1e-4, gmres_max_iter=30,
                                     tol=1e-6, max_it=1000, logoutput=False):
         
         self.rhob = bulk_density
@@ -217,6 +218,9 @@ class dft_core():
 
         elif solver == 'fire':
             fire(self,alpha0,dt,tol,max_it,logoutput)
+
+        elif solver == 'newton':
+            newton_gmres(self,tol,max_it,gmres_tol,gmres_max_iter,logoutput)
 
         torch.cuda.empty_cache()
         self.error = self.error.cpu()
