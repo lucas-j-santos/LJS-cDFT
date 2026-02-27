@@ -1,0 +1,49 @@
+data_450K_MIL-53(Al)
+_chemical_name_common                  'MIL-53(Al)'
+_chemical_formula_sum                 'Al(OH)(O2C-C6H4-CO2)'
+_chemical_formula_weight              832.426
+_cell_length_a                        6.635(3)
+_cell_length_b                        16.84(2)
+_cell_length_c                        12.80(1)
+_cell_angle_alpha                     90
+_cell_angle_beta                      90
+_cell_angle_gamma                     90
+_cell_volume                          1430(2)
+_cell_formula_units_Z                 4
+_space_group_name_H-M_alt             'Imma'
+_space_group_IT_number                74
+
+_exptl_crystal_density_diffrn         0.967(1)
+_diffrn_ambient_temperature           450
+_diffrn_radiation_type                'neutron'
+_diffrn_radiation_wavelength          2.079
+_diffrn_measurement_device_type       'BT1, HRPD (Ge(311) monochromator)'
+_diffrn_measurement_theta_min         3.000
+_diffrn_measurement_theta_max         166.250
+_diffrn_reflns_number                 ?
+_diffrn_reflns_theta_full             ?
+_diffrn_reflns_av_R_equivalents       ?
+
+_refine_ls_R_factor_all               0.040
+_refine_ls_wR_factor_ref              ?
+_refine_ls_goodness_of_fit_all        1.186
+
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+_atom_site_U_iso_or_equiv
+_atom_site_adp_type
+_atom_site_symmetry_multiplicity
+_atom_site_calc_flag
+Al1      Al1     0.25       0.25       0.75       1.0      0.76(13)   Uiso    4    d
+O1       O1      0          0.25       0.685(1)   1.0      0.52(4)    Uiso    4    d
+H1       H1      0          0.25       0.611      1.0      0.52(4)    Uiso    4    d
+O2       O2      0.164      -0.170     0.157      1.0      0.71(4)    Uiso    16   d
+C1       C1      0.181      -0.034     0.031      1.0      0.85(3)    Uiso    16   d
+C2       C2      0          -0.068     0.062      1.0      0.85(3)    Uiso    8    d
+C3       C3      0          -0.139     0.128      1.0      0.85(3)    Uiso    8    d
+H2       H2      0.314      -0.059     0.054      1.0      0.85(3)    Uiso    16   d
