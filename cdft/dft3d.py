@@ -87,7 +87,7 @@ class dft_core():
 
         # Transform to cartesian coordinates
         s = torch.stack([self.U, self.V, self.W], dim=0)
-        r = r = torch.einsum('ij,j...->i...', self.H, s)
+        r = torch.einsum('ij,j...->i...', self.H, s)
         self.X, self.Y, self.Z = r[0], r[1], r[2]
 
         # Frequency grid in skewed coordinates
