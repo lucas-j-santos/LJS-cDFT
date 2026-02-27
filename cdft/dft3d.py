@@ -105,9 +105,9 @@ class dft_core():
             del self.U, self.V, self.W 
         else:
             Kx = Ku
-            Ky = (Kv-Ku*np.cos(self.gamma))/np.sin(self.gamma)
-            Kz = (Ku*(zeta*np.cos(self.gamma)/np.sin(self.gamma)-np.cos(self.beta))\
-                  -Kv*zeta/np.sin(self.gamma)+Kw)/np.sqrt(1.0-np.cos(self.beta)**2-zeta**2)
+            Ky = (Kv-Ku*cos_gamma)/sin_gamma
+            Kz = (Ku*(zeta*cos_gamma/sin_gamma-cos_beta)\
+                  -Kv*zeta/sin_gamma+Kw)/np.sqrt(1.0-cos_beta**2-zeta**2)
         
         K = np.sqrt(Kx**2+Ky**2+Kz**2)
         # kcut = np.array([Kx.max(), Ky.max(), Kz.max()])
