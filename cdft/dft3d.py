@@ -262,8 +262,7 @@ class dft_core():
             self.rho = self.rhob*torch.exp(-self.Vext)   
     
     def equilibrium_density_profile(self, bulk_density, fmt='ASWB', solver='anderson',
-                                    alpha0=0.2, dt=0.1, anderson_mmax=10, anderson_damping=0.1, 
-                                    gmres_tol=1e-4, gmres_max_iter=30,
+                                    alpha0=0.2, dt=0.1, anderson_mmax=10, anderson_damping=0.1,
                                     tol=1e-6, max_it=1000, logoutput=False):
         
         self.rhob = bulk_density
