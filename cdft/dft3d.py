@@ -1,11 +1,8 @@
 import numpy as np
+import scipy
 import torch
-from torch.fft import fftn, ifftn
-from torch.linalg import inv
-from torch.autograd import grad
-from scipy.special import spherical_jn
 from .lj_eos import lj_eos
-from .solver import *
+from .solvers import *
 
 torch.set_default_dtype(torch.float64)
 pi = np.pi
@@ -14,13 +11,11 @@ def lancsoz(kx,ky,kz,M):
     return np.sinc(kx/M[0])*np.sinc(ky/M[1])*np.sinc(kz/M[2])
 
 def yukawa_ft(k,sigma,epsilon,l):
-    
     u_hat = -epsilon*\
         np.piecewise(k,[k==0.0,k>0.0],
                      [4*pi*sigma**3*(l+1.0)/l**2,
                       lambda k: 
                       (2*sigma**2*(2*k*pi*sigma*np.cos(2*k*pi*sigma)+l*np.sin(2*k*pi*sigma)))/(k*(l**2+(2*k*pi*sigma)**2))])
-
     return u_hat
 
 class dft_core():
@@ -57,7 +52,7 @@ class dft_core():
             ], device=device)
             
             self.H_T = self.H.T
-            self.H_inv_T = inv(self.H_T)
+            self.H_inv_T = torch.linalg.inv(self.H_T)
             self.det_H = sin_gamma*np.sqrt(1.0-cos_beta**2-zeta**2)
         else:
             self.orthogonal = True
@@ -125,9 +120,9 @@ class dft_core():
         ulj_hat = np.empty_like(w2_hat)
         
         # Weight functions in Fourier space
-        w2_hat = self.four_pi_R_sq*spherical_jn(0,two_pi_R_K)*lanczos_term
-        w3_hat = (4./3.)*pi*self.R_cu*(spherical_jn(0, two_pi_R_K)+spherical_jn(2,two_pi_R_K))*lanczos_term
-        watt_hat = (spherical_jn(0, four_pi_R_K)+spherical_jn(2,four_pi_R_K))*lanczos_term
+        w2_hat = self.four_pi_R_sq*scipy.special.spherical_jn(0,two_pi_R_K)*lanczos_term
+        w3_hat = (4./3.)*pi*self.R_cu*(scipy.special.spherical_jn(0, two_pi_R_K)+scipy.special.spherical_jn(2,two_pi_R_K))*lanczos_term
+        watt_hat = (scipy.special.spherical_jn(0, four_pi_R_K)+scipy.special.spherical_jn(2,four_pi_R_K))*lanczos_term
         w2vec_hat[0] = -1j*2.0*pi*Kx*w3_hat
         w2vec_hat[1] = -1j*2.0*pi*Ky*w3_hat
         w2vec_hat[2] = -1j*2.0*pi*Kz*w3_hat
@@ -150,15 +145,15 @@ class dft_core():
 
         self.rho.requires_grad = True
 
-        self.rho_hat = fftn(self.rho)
-        self.n2 = ifftn(self.rho_hat*self.w2_hat).real
+        self.rho_hat = torch.fft.fftn(self.rho)
+        self.n2 = torch.fft.ifftn(self.rho_hat*self.w2_hat).real
         self.n0 = self.n2/(4.*pi*self.R**2)
         self.n1 = self.n2/(4.*pi*self.R)
-        self.n3 = ifftn(self.rho_hat*self.w3_hat).real.clamp_(max=1.0-1e-16)
-        self.n2vec = ifftn(self.rho_hat*self.w2vec_hat, dim=(1,2,3)).real
+        self.n3 = torch.fft.ifftn(self.rho_hat*self.w3_hat).real.clamp_(max=1.0-1e-16)
+        self.n2vec = torch.fft.ifftn(self.rho_hat*self.w2vec_hat, dim=(1,2,3)).real
         self.n1vec = self.n2vec/(4.*pi*self.R)
-        self.rhobar = ifftn(self.rho_hat*self.watt_hat).real
-        self.ulj = ifftn(self.rho_hat*self.ulj_hat).real
+        self.rhobar = torch.fft.ifftn(self.rho_hat*self.watt_hat).real
+        self.ulj = torch.fft.ifftn(self.rho_hat*self.ulj_hat).real
 
     def functional(self,fmt):
 
@@ -230,12 +225,12 @@ class dft_core():
     def functional_derivative(self, fmt):
 
         self.functional(fmt)
-        self.dFres = grad(self.Fres, self.rho)[0]
+        self.dFres = torch.autograd.grad(self.Fres, self.rho)[0]
         self.dFres = self.dFres.detach()/self.cell_volume
 
         self.rho.requires_grad=False
 
-    def euler_lagrange(self, lnrho, fmt='ASWB'):
+    def euler_lagrange(self, lnrho, fmt):
         
         self.functional_derivative(fmt)
         self.res = torch.empty_like(self.rho)
@@ -268,7 +263,7 @@ class dft_core():
         self.rhob = bulk_density
         self.mu = self.eos.chemical_potential(bulk_density)+torch.log(self.rhob)
         self.fmt = fmt
-        self.rho[self.excluded] = 1e-15
+        self.rho[self.excluded] = 1e-16
 
         if solver == 'picard': 
             picard(self,alpha0,tol,max_it,logoutput)

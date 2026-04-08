@@ -4,7 +4,7 @@ from torch.fft import fft, ifft
 from torch.autograd import grad
 from scipy.special import spherical_jn
 from .lj_eos import lj_eos
-from .solver import *
+from .solvers import *
 
 kB = 1.380649e-23
 NA = 6.02214076e23

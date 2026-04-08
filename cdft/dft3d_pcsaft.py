@@ -4,7 +4,7 @@ from torch.fft import fftn, ifftn
 from torch.autograd import grad
 from scipy.special import spherical_jn
 from .pcsaft_eos import pcsaft
-from .solver import *
+from .solvers import *
 
 torch.set_default_dtype(torch.float64)
 psi = 1.3862

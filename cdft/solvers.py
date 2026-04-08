@@ -1,6 +1,5 @@
 import torch
 import time
-from torch.linalg import solve
 
 class picard():
 
@@ -127,7 +126,7 @@ class anderson():
             anderson_alpha[m] = 1.0
             # Solve for alpha coefficients
             try:
-                anderson_alpha = solve(R, anderson_alpha)
+                anderson_alpha = torch.linalg.solve(R, anderson_alpha)
             except:
                 # Fallback to Picard if matrix is singular
                 anderson_alpha = torch.zeros(m+1, device=dft.device)
