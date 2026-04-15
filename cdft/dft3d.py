@@ -155,7 +155,7 @@ class dft_core():
         self.rhobar = torch.fft.ifftn(self.rho_hat*self.watt_hat).real
         self.ulj = torch.fft.ifftn(self.rho_hat*self.ulj_hat).real
 
-    def functional(self,fmt):
+    def helmholtz_functional(self,fmt):
 
         self.weighted_densities()
 
@@ -207,24 +207,26 @@ class dft_core():
         self.Fhs = self.Phi_hs.sum()*self.cell_volume
 
         # Attractive Contribution
+        self.Phi_mfa = 0.5*self.rho*self.ulj/self.T
+
         eta = self.rhobar*pi*self.d**3/6
         eta.clamp_(max=1.0-1e-16)
         eos_term = self.eos.helmholtz_energy(self.rhobar)
         correction_term_hs = (4.0*eta-3.0*eta**2)/((1.0-eta)**2)
-        correction_term_mfa = (16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
+        correction_term_mfa = -(16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
+        self.Phi_cor = eos_term-correction_term_hs-correction_term_mfa
 
-        self.Phi_cor = eos_term-correction_term_hs+correction_term_mfa
-        self.Phi_mfa = 0.5*self.rho*self.ulj/self.T
-        self.Phi_att = self.rhobar*self.Phi_cor+self.Phi_mfa
+        self.Phi_att = self.Phi_mfa+self.rhobar*self.Phi_cor
+
         self.Fatt = self.Phi_att.sum()*self.cell_volume
 
         del eta, eos_term, correction_term_hs, correction_term_mfa 
 
         self.Fres = self.Fhs+self.Fatt
 
-    def functional_derivative(self, fmt):
+    def helmholtz_functional_derivative(self, fmt):
 
-        self.functional(fmt)
+        self.helmholtz_functional(fmt)
         self.dFres = torch.autograd.grad(self.Fres, self.rho)[0]
         self.dFres = self.dFres.detach()/self.cell_volume
 
@@ -232,9 +234,9 @@ class dft_core():
 
     def euler_lagrange(self, lnrho, fmt):
         
-        self.functional_derivative(fmt)
+        self.helmholtz_functional_derivative(fmt)
         self.res = torch.empty_like(self.rho)
-        self.res[self.valid] = self.mu-self.dFres[self.valid]-self.Vext[self.valid]-lnrho[self.valid]
+        self.res[self.valid] = self.mu-lnrho[self.valid]-self.dFres[self.valid]-self.Vext[self.valid]
 
     def loss(self):
         return torch.norm(self.res[self.valid])/np.sqrt(self.points.prod())
@@ -261,8 +263,8 @@ class dft_core():
                                     tol=1e-6, max_it=1000, logoutput=False):
         
         self.rhob = bulk_density
-        self.mu = self.eos.chemical_potential(bulk_density)+torch.log(self.rhob)
         self.fmt = fmt
+        self.mu = self.eos.chemical_potential(bulk_density)+torch.log(self.rhob)
         self.rho[self.excluded] = 1e-16
 
         if solver == 'picard': 
