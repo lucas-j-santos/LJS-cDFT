@@ -222,13 +222,13 @@ class dft_core():
 
         del eta, eos_term, correction_term_hs, correction_term_mfa 
 
-        self.Fres = self.Fhs+self.Fatt
+        self.Fex = self.Fhs+self.Fatt
 
     def helmholtz_functional_derivative(self, fmt):
 
         self.helmholtz_functional(fmt)
-        self.dFexc = torch.autograd.grad(self.Fres, self.rho)[0]
-        self.dFexc = self.dFexc.detach()/self.cell_volume
+        self.dFex = torch.autograd.grad(self.Fex, self.rho)[0]
+        self.dFex = self.dFex.detach()/self.cell_volume
 
         self.rho.requires_grad=False
 
@@ -236,7 +236,7 @@ class dft_core():
         
         self.helmholtz_functional_derivative(fmt)
         self.res = torch.empty_like(self.rho)
-        self.res[self.valid] = self.mu-lnrho[self.valid]-self.dFexc[self.valid]-self.Vext[self.valid]
+        self.res[self.valid] = self.mu-lnrho[self.valid]-self.dFex[self.valid]-self.Vext[self.valid]
 
     def loss(self):
         return torch.norm(self.res[self.valid])/np.sqrt(self.points.prod())
@@ -284,4 +284,4 @@ class dft_core():
 
         self.total_molecules = self.rho[self.valid].cpu().sum()*self.cell_volume
         Phi = self.rho*(torch.log(self.rho)-1.0)+self.rho*(self.Vext-self.mu)
-        self.Omega = Phi.sum()*self.cell_volume+self.Fres.detach()
+        self.Omega = Phi.sum()*self.cell_volume+self.Fex.detach()
