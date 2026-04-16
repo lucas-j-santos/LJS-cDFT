@@ -147,11 +147,11 @@ class dft_core():
 
         self.rho_hat = torch.fft.fftn(self.rho)
         self.n2 = torch.fft.ifftn(self.rho_hat*self.w2_hat).real
-        self.n0 = self.n2/(4.*pi*self.R**2)
-        self.n1 = self.n2/(4.*pi*self.R)
+        self.n0 = self.n2/(self.four_pi_R_sq)
+        self.n1 = self.n2/(self.four_pi_R)
         self.n3 = torch.fft.ifftn(self.rho_hat*self.w3_hat).real.clamp_(max=1.0-1e-16)
         self.n2vec = torch.fft.ifftn(self.rho_hat*self.w2vec_hat, dim=(1,2,3)).real
-        self.n1vec = self.n2vec/(4.*pi*self.R)
+        self.n1vec = self.n2vec/(self.four_pi_R)
         self.rhobar = torch.fft.ifftn(self.rho_hat*self.watt_hat).real
         self.ulj = torch.fft.ifftn(self.rho_hat*self.ulj_hat).real
 
@@ -227,8 +227,8 @@ class dft_core():
     def helmholtz_functional_derivative(self, fmt):
 
         self.helmholtz_functional(fmt)
-        self.dFres = torch.autograd.grad(self.Fres, self.rho)[0]
-        self.dFres = self.dFres.detach()/self.cell_volume
+        self.dFexc = torch.autograd.grad(self.Fres, self.rho)[0]
+        self.dFexc = self.dFexc.detach()/self.cell_volume
 
         self.rho.requires_grad=False
 
@@ -236,7 +236,7 @@ class dft_core():
         
         self.helmholtz_functional_derivative(fmt)
         self.res = torch.empty_like(self.rho)
-        self.res[self.valid] = self.mu-lnrho[self.valid]-self.dFres[self.valid]-self.Vext[self.valid]
+        self.res[self.valid] = self.mu-lnrho[self.valid]-self.dFexc[self.valid]-self.Vext[self.valid]
 
     def loss(self):
         return torch.norm(self.res[self.valid])/np.sqrt(self.points.prod())
