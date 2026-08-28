@@ -149,7 +149,8 @@ class dft_core():
         self.n2 = torch.fft.ifftn(self.rho_hat*self.w2_hat).real
         self.n0 = self.n2/(self.four_pi_R_sq)
         self.n1 = self.n2/(self.four_pi_R)
-        self.n3 = torch.fft.ifftn(self.rho_hat*self.w3_hat).real.clamp_(max=1.0-1e-16)
+        self.n3 = torch.fft.ifftn(self.rho_hat*self.w3_hat).real
+        self.n3 = self.n3.clamp(max=1.0-1e-16)
         self.n2vec = torch.fft.ifftn(self.rho_hat*self.w2vec_hat, dim=(1,2,3)).real
         self.n1vec = self.n2vec/(self.four_pi_R)
         self.rhobar = torch.fft.ifftn(self.rho_hat*self.watt_hat).real
