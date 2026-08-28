@@ -90,7 +90,8 @@ class dft_core():
         self.n2 = ifft(self.rho_hat*self.w2_hat).real
         self.n0 = self.n2/(4.*pi*self.R**2)
         self.n1 = self.n2/(4.*pi*self.R)
-        self.n3 = ifft(self.rho_hat*self.w3_hat).real.clamp_(max=1.0-1e-16)
+        self.n3 = ifft(self.rho_hat*self.w3_hat).real
+        self.n3 = self.n3.clamp(max=1.0-1e-16)
         self.n2vec = ifft(self.rho_hat*self.w2vec_hat).real
         self.n1vec = self.n2vec/(4.*pi*self.R)
         self.rhobar = ifft(self.rho_hat*self.watt_hat).real
