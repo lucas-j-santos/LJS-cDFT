@@ -164,15 +164,13 @@ class dft_core():
         one_minus_n3_sq = one_minus_n3**2
         f1 = -torch.log(one_minus_n3)
         f2 = one_minus_n3.pow(-1)
-        f4 = (self.n3+one_minus_n3_sq*torch.log(one_minus_n3))/(36.0*pi*self.n3**2*one_minus_n3_sq)
 
-        del one_minus_n3, one_minus_n3_sq
+        n3s = self.n3.clamp(min=1e-4)
+        f4 = torch.where(self.n3 > 1e-4,
+                         (n3s+(1-n3s)**2*torch.log(1-n3s))/(36*pi*n3s**2*(1-n3s)**2),
+                         1/(24*pi) + 2/(27*pi)*self.n3 + 5/(48*pi)*self.n3**2)
 
-        # Small n3 approximation
-        mask = self.n3 <= 1e-4
-        f4[mask] = 1/(24*pi) + 2/(27*pi)*self.n3[mask]+5/(48*pi)*self.n3[mask]**2
-
-        del mask
+        del one_minus_n3, one_minus_n3_sq, n3s
 
         if fmt == 'WB':
 
@@ -181,8 +179,8 @@ class dft_core():
             n2_sq = self.n2**2
             n2vec_sq = (self.n2vec*self.n2vec).sum(dim=0)
 
-            n1vec_n2vec.clamp(max=n1_n2)
-            n2vec_sq.clamp(max=n2_sq)
+            n1vec_n2vec = n1vec_n2vec.clamp(max=n1_n2)
+            n2vec_sq = n2vec_sq.clamp(max=n2_sq)
             
             self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*(n2_sq*self.n2-3.0*self.n2*n2vec_sq) 
 
@@ -196,9 +194,9 @@ class dft_core():
             n2vec_sq = (self.n2vec*self.n2vec).sum(dim=0)
             xi = n2vec_sq/n2_sq
 
-            n1vec_n2vec.clamp(max=n1_n2)
-            n2vec_sq.clamp(max=n2_sq)
-            xi.clamp_(max=1.0-1e-16)
+            n1vec_n2vec = n1vec_n2vec.clamp(max=n1_n2)
+            n2vec_sq = n2vec_sq.clamp(max=n2_sq)
+            xi = xi.clamp_(max=1.0-1e-16)
             
             self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*self.n2**3*(1.0-xi)**3
 
