@@ -34,7 +34,7 @@ def bcoef(Tstar):
 
 class lj_eos():
 
-    def __init__(self, parameters, temperature, device=None, dtype=torch.float64):
+    def __init__(self, parameters, temperature, device=None):
 
         self.parameters = parameters
         self.sigma = self.parameters['sigma']
@@ -43,24 +43,23 @@ class lj_eos():
         self.Tstar = self.T/self.epsilon
         self.d = self.sigma*(1+0.2977*self.Tstar)/(1+0.33163*self.Tstar+1.0477e-3*self.Tstar**2)
 
-        a = acoef(self.Tstar).to(dtype)
-        self._c = (a/torch.arange(1.0, 9.0, dtype=dtype)).contiguous()
-        self._b = bcoef(self.Tstar).to(dtype).contiguous()
+        a = acoef(self.Tstar)
+        self._c = (a/torch.arange(1.0, 9.0)).contiguous()
+        self._b = bcoef(self.Tstar).contiguous()
 
         self._cache = {}
         if device is not None:
-            self._coeffs(torch.device(device), dtype)
+            self._coeffs(torch.device(device))
 
-    def _coeffs(self, device, dtype):
-        key = (str(device), dtype)
+    def _coeffs(self, device):
+        key = str(device)
         if key not in self._cache:
-            self._cache[key] = (self._c.to(device=device, dtype=dtype),
-                                self._b.to(device=device, dtype=dtype))
+            self._cache[key] = (self._c.to(device), self._b.to(device))
         return self._cache[key]
 
     def helmholtz_energy(self, rho):
 
-        c, b = self._coeffs(rho.device, rho.dtype)
+        c, b = self._coeffs(rho.device)
 
         rhostar = rho*self.sigma**3
         rhostar_sq = rhostar*rhostar
@@ -139,11 +138,11 @@ class lj_eos():
         if phase == 'vap':
             eta = 1e-10
             rho0 = eta/((pi/6.)*self.d**3)
-            rho0 = torch.tensor([rho0], dtype=self._c.dtype)
+            rho0 = torch.tensor([rho0])
         elif phase == 'liq':
             eta = 0.5
             rho0 = eta/((pi/6.)*self.d**3)
-            rho0 = torch.tensor([rho0], dtype=self._c.dtype)
+            rho0 = torch.tensor([rho0])
         else:
             rho0 = phase
 
