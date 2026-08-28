@@ -113,10 +113,6 @@ class dft_core():
 
         del one_minus_n3, one_minus_n3_sq, n3s
 
-        # Small n3 approximation
-
-        del mask
-
         if fmt == 'WB':
 
             n1_n2 = self.n1*self.n2
