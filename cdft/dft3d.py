@@ -196,7 +196,7 @@ class dft_core():
 
             n1vec_n2vec = n1vec_n2vec.clamp(max=n1_n2)
             n2vec_sq = n2vec_sq.clamp(max=n2_sq)
-            xi = xi.clamp_(max=1.0-1e-16)
+            xi = xi.clamp(max=1.0-1e-16)
             
             self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*self.n2**3*(1.0-xi)**3
 
@@ -208,7 +208,7 @@ class dft_core():
         self.Phi_mfa = 0.5*self.rho*self.ulj/self.T
 
         eta = self.rhobar*pi*self.d**3/6
-        eta.clamp_(max=1.0-1e-16)
+        eta = eta.clamp(max=1.0-1e-16)
         eos_term = self.eos.helmholtz_energy(self.rhobar)
         correction_term_hs = (4.0*eta-3.0*eta**2)/((1.0-eta)**2)
         correction_term_mfa = -(16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
