@@ -111,7 +111,7 @@ class dft_core():
 
         # Small n3 approximation
         mask = self.n3 <= 1e-4
-        f4[mask] = 1/(24*pi) + 2/(27*pi)*self.n3[mask]+(5/48*pi)*self.n3[mask]**2
+        f4[mask] = 1/(24*pi) + 2/(27*pi)*self.n3[mask]+5/(48*pi)*self.n3[mask]**2
 
         del mask
 

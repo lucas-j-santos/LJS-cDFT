@@ -168,7 +168,7 @@ class dft_core():
         f2 = one_minus_n3.pow(-1)
         f4 = (self.n3+one_minus_n3**2*log(one_minus_n3))/(36.0*pi*self.n3**2*one_minus_n3**2)
         mask = self.n3 <= 1e-4
-        f4[mask] = 1/(24*pi)+2/(27*pi)*self.n3[mask]+(5/48*pi)*self.n3[mask]**2
+        f4[mask] = 1/(24*pi)+2/(27*pi)*self.n3[mask]+5/(48*pi)*self.n3[mask]**2
 
         if fmt == 'WB':
 
