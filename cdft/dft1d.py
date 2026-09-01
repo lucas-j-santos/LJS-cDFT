@@ -1,7 +1,5 @@
 import numpy as np
 import torch
-from torch.fft import rfft, irfft
-from torch.autograd import grad
 from scipy.special import spherical_jn
 from .lj_eos import lj_eos
 from .solvers import *
@@ -11,7 +9,6 @@ NA = 6.02214076e23
 
 pi = np.pi
 torch.set_default_dtype(torch.float64)
-
 
 def lancsoz(k, M):
     return np.sinc(k/M)
@@ -107,18 +104,18 @@ class dft_core():
 
         self.rho.requires_grad = True
 
-        self.rho_hat = rfft(self.rho)
+        self.rho_hat = torch.fft.rfft(self.rho)
 
-        self.n2 = irfft(self.rho_hat*self.w2_hat, n=self.npoints)
+        self.n2 = torch.fft.irfft(self.rho_hat*self.w2_hat, n=self.npoints)
         self.n0 = self.n2/self.four_pi_R_sq
 
         # n3 and n2vec share the same product rho_hat*w3_hat.
         rho_w3 = self.rho_hat*self.w3_hat
-        self.n3 = irfft(rho_w3, n=self.npoints).clamp(max=1.0-1e-16)
-        self.n2vec = irfft(-1j*(self.kvec*rho_w3), n=self.npoints)
+        self.n3 = torch.fft.irfft(rho_w3, n=self.npoints).clamp(max=1.0-1e-16)
+        self.n2vec = torch.fft.irfft(-1j*(self.kvec*rho_w3), n=self.npoints)
 
-        self.rhobar = irfft(self.rho_hat*self.watt_hat, n=self.npoints)
-        self.ulj = irfft(self.rho_hat*self.ulj_hat, n=self.npoints)
+        self.rhobar = torch.fft.irfft(self.rho_hat*self.watt_hat, n=self.npoints)
+        self.ulj = torch.fft.irfft(self.rho_hat*self.ulj_hat, n=self.npoints)
 
     def functional(self,fmt):
 
@@ -176,7 +173,7 @@ class dft_core():
     def functional_derivative(self, fmt):
 
         self.functional(fmt)
-        self.dFres = grad(self.Fres, self.rho)[0]
+        self.dFres = torch.autograd.grad(self.Fres, self.rho)[0]
         self.dFres = self.dFres.detach()/self.cell_size
 
         self.rho.requires_grad=False

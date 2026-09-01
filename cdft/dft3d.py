@@ -1,6 +1,6 @@
 import numpy as np
-import scipy
 import torch
+from scipy.special import spherical_jn
 from .lj_eos import lj_eos
 from .solvers import *
 
@@ -119,9 +119,9 @@ class dft_core():
         four_pi_R_K = 2.0*two_pi_R_K
         lanczos_term = lancsoz(Ku, Kv, Kw, kcut)
 
-        w2_hat = self.four_pi_R_sq*scipy.special.spherical_jn(0,two_pi_R_K)*lanczos_term
-        w3_hat = (4./3.)*pi*self.R_cu*(scipy.special.spherical_jn(0, two_pi_R_K)+scipy.special.spherical_jn(2,two_pi_R_K))*lanczos_term
-        watt_hat = (scipy.special.spherical_jn(0, four_pi_R_K)+scipy.special.spherical_jn(2,four_pi_R_K))*lanczos_term
+        w2_hat = self.four_pi_R_sq*spherical_jn(0,two_pi_R_K)*lanczos_term
+        w3_hat = (4./3.)*pi*self.R_cu*(spherical_jn(0, two_pi_R_K)+spherical_jn(2,two_pi_R_K))*lanczos_term
+        watt_hat = (spherical_jn(0, four_pi_R_K)+spherical_jn(2,four_pi_R_K))*lanczos_term
 
         l = np.array([2.544944560171334,15.464088962136243])
         eps = 1.857708161877173*self.epsilon*np.array([1,-1])
