@@ -9,18 +9,22 @@ class picard():
 
         lnrho = torch.log(dft.rho)
         dft.it = 0
+        stopped = False
         tic = time.process_time()
         for i in range(max_it):
             # Calculate residual
             dft.euler_lagrange(lnrho, dft.fmt)
             dft.error = dft.loss()
-            if dft.error < tol or torch.isnan(dft.error): break
+            if dft.error < tol or not torch.isfinite(dft.error):
+                stopped = True
+                break
             if logoutput: print(dft.it, dft.error.item())
-            # Update solution. res is exactly zero on the excluded cells, so
-            # the update is a no-op there and no masking is needed.
             lnrho.add_(dft.res, alpha=alpha)
             dft.rho = torch.exp(lnrho)
             dft.it += 1
+        if not stopped:
+            dft.euler_lagrange(lnrho, dft.fmt)
+            dft.error = dft.loss()
         toc = time.process_time()
         dft.process_time = toc-tic
 
@@ -31,15 +35,16 @@ class picard_line_search():
 
         lnrho = torch.log(dft.rho)
         dft.it = 0
+        stopped = False
         tic = time.process_time()
         for i in range(max_it):
             # Calculate residual
             dft.euler_lagrange(lnrho, dft.fmt)
             dft.error = dft.loss()
-            if dft.error < tol or torch.isnan(dft.error): break
+            if dft.error < tol or not torch.isfinite(dft.error):
+                stopped = True
+                break
             if logoutput: print(dft.it, dft.error.item())
-            # The line search overwrites dft.res while probing trial steps, so
-            # the search direction has to be kept aside before it starts.
             direction = dft.res.clone()
             # Perform line search for optimal step size
             alpha = self.line_search(dft, lnrho, direction, alpha0, dft.error)
@@ -47,6 +52,9 @@ class picard_line_search():
             lnrho.add_(direction, alpha=alpha)
             dft.rho = torch.exp(lnrho)
             dft.it += 1
+        if not stopped:
+            dft.euler_lagrange(lnrho, dft.fmt)
+            dft.error = dft.loss()
         toc = time.process_time()
         dft.process_time = toc-tic
 
@@ -106,27 +114,27 @@ class anderson():
         m = 0
         lnrho = torch.log(dft.rho)
         dft.it = 0
+        stopped = False
         tic = time.process_time()
         for i in range(max_it):
             # Calculate residual
             dft.euler_lagrange(lnrho, dft.fmt)
             dft.error = dft.loss()
-            if dft.error < tol or torch.isnan(dft.error): break
+            if dft.error < tol or not torch.isfinite(dft.error):
+                stopped = True
+                break
             if logoutput: print(dft.it, dft.error.item())
 
-            # Store residual and solution in the next slot
             slot = dft.it % mmax
             r = dft.res.reshape(-1)
             resm[slot] = r
             rhom[slot] = lnrho.reshape(-1)
             m = min(m+1, mmax)
 
-            # Only the new row/column of the Gram matrix has to be computed
             new_row = resm[:m].mv(r)
             gram[slot, :m] = new_row
             gram[:m, slot] = new_row
 
-            # Solve the small bordered system on the CPU: it is (m+1)x(m+1)
             R = np.zeros((m+1, m+1))
             R[:m, :m] = gram[:m, :m].cpu().numpy()
             R[:m, m] = 1.0
@@ -136,8 +144,8 @@ class anderson():
             try:
                 anderson_alpha = np.linalg.solve(R, rhs)[:m]
             except np.linalg.LinAlgError:
-                # Fallback to Picard if the matrix is singular: put all the
-                # weight on the most recent iterate.
+                anderson_alpha = np.full(m, np.nan)
+            if not np.isfinite(anderson_alpha).all():
                 anderson_alpha = np.zeros(m)
                 anderson_alpha[slot] = 1.0
 
@@ -145,6 +153,9 @@ class anderson():
             lnrho = (a.matmul(rhom[:m])+damping*a.matmul(resm[:m])).view(dft.shape)
             dft.rho = torch.exp(lnrho)
             dft.it += 1
+        if not stopped:
+            dft.euler_lagrange(lnrho, dft.fmt)
+            dft.error = dft.loss()
         toc = time.process_time()
         dft.process_time = toc-tic
 
@@ -196,7 +207,7 @@ class fire():
 
             V.add_(dft.res, alpha=0.5*dt)
             vnorm = torch.linalg.vector_norm(V)
-            rnorm = torch.linalg.vector_norm(dft.res)
+            rnorm = torch.linalg.vector_norm(dft.res).clamp(min=1e-300)
             V = (1.0-alpha)*V+(alpha*vnorm/rnorm)*dft.res
             # V *= (1.0/(1.0-(1.0-alpha)**Npos))
             lnrho.add_(V, alpha=dt)
@@ -206,7 +217,7 @@ class fire():
 
             dft.error = dft.loss()
             dft.it += 1
-            if dft.error < tol or torch.isnan(dft.error): break
+            if dft.error < tol or not torch.isfinite(dft.error): break
             if logoutput: print(dft.it, dft.error.item())
 
         toc = time.process_time()

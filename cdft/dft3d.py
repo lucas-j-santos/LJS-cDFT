@@ -136,12 +136,20 @@ class dft_core():
         # vector 2 pi K is stored; the -i and w3_hat are applied on the fly.
         kvec = 2.0*pi*np.stack([Kx, Ky, Kz])
 
-        if self.shape[0] % 2 == 0:
-            kvec[0, self.shape[0]//2, :, :] = 0.0
-        if self.shape[1] % 2 == 0:
-            kvec[1, :, self.shape[1]//2, :] = 0.0
-        if self.shape[2] % 2 == 0:
-            kvec[2, :, :, -1] = 0.0
+        if self.orthogonal:
+            if self.shape[0] % 2 == 0:
+                kvec[0, self.shape[0]//2, :, :] = 0.0
+            if self.shape[1] % 2 == 0:
+                kvec[1, :, self.shape[1]//2, :] = 0.0
+            if self.shape[2] % 2 == 0:
+                kvec[2, :, :, -1] = 0.0
+        else:
+            if self.shape[0] % 2 == 0:
+                kvec[:, self.shape[0]//2, :, :] = 0.0
+            if self.shape[1] % 2 == 0:
+                kvec[:, :, self.shape[1]//2, :] = 0.0
+            if self.shape[2] % 2 == 0:
+                kvec[:, :, :, -1] = 0.0
 
         self.kvec = torch.tensor(kvec, device=device)
 
@@ -236,10 +244,10 @@ class dft_core():
 
     def initial_condition(self, bulk_density, Vext, potential_cutoff=50.0, model='bulk'):
 
-        self.rhob = bulk_density
         self.eos = lj_eos(self.parameters, self.T, device=self.device)
         self.mu = (self.eos.chemical_potential(bulk_density)
-                   +torch.log(self.rhob)).to(device=self.device)
+                   +torch.log(bulk_density)).to(device=self.device)
+        self.rhob = torch.as_tensor(bulk_density).to(device=self.device)
 
         self.Vext = (Vext/self.T).to(device=self.device)
         self.excluded = self.Vext >= potential_cutoff
@@ -256,10 +264,10 @@ class dft_core():
                                     alpha0=0.2, dt=0.1, anderson_mmax=10, anderson_damping=0.1,
                                     tol=1e-6, max_it=1000, logoutput=False):
 
-        self.rhob = bulk_density
         self.fmt = fmt
         self.mu = (self.eos.chemical_potential(bulk_density)
-                   +torch.log(self.rhob)).to(device=self.device)
+                   +torch.log(bulk_density)).to(device=self.device)
+        self.rhob = torch.as_tensor(bulk_density).to(device=self.device)
         self.rho = self.rho.detach().clone()
         self.rho[self.excluded] = 1e-16
 
