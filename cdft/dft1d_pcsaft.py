@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from torch import pi, float64
 from torch.fft import rfft, irfft
 from torch.autograd import grad
 from scipy.special import spherical_jn
@@ -70,7 +69,7 @@ class dft_core():
         # which for even N is (N/2-1)/L instead of (N/2+1)/L.
         M = self.npz//2+1
         kcut = M/self.system_size
-        lanczos_term = lancsoz(kz, kcut)**self.lanczos_power
+        lanczos_term = lancsoz(kz, kcut)
 
         Rn = np.asarray(0.5*d0)
 
@@ -239,7 +238,6 @@ class dft_core():
         self.Fres = self.F_hs+self.F_hc+self.F_disp+self.F_qq
 
     # -----------------------------------------------------------------
-# -----------------------------------------------------------------
     def functional_derivative(self, fmt):
 
         self.functional(fmt)
@@ -259,7 +257,9 @@ class dft_core():
     def initial_condition(self, bulk_density, composition, Vext, potential_cutoff=50.0):
 
         self.rhob = bulk_density*composition
-        self.eos = pcsaft(self.pcsaft_parameters, self.T, device=self.device)
+        # EOS bulk: opera em escalares, fica na CPU. Nao confundir com
+        # self.C, que precisa estar no device para o trabalho na grade.
+        self.eos = pcsaft(self.pcsaft_parameters, self.T)
         self.mu = (self.eos.chemical_potential(bulk_density, composition)
                    + torch.log(self.rhob)).to(device=self.device)
         self.rhob = self.rhob.to(device=self.device)

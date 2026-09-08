@@ -159,12 +159,29 @@ class pcsaft():
         self.sigma = C['sigma']
         self.epsilon = C['epsilon']
         self.half_d = 0.5*self.d
+        # device efetivo dos parametros (nunca None): tudo que entra na EOS
+        # e trazido para ca antes de ser usado
+        self.device = self.m.device
+
+    # -----------------------------------------------------------------
+    def _prepare(self, rho, x):
+
+        dev = self.m.device
+        rho = rho.detach().to(dev).clone().requires_grad_(True)
+        x = x.detach().to(dev).clone().requires_grad_(True)
+        return rho, x
 
     # -----------------------------------------------------------------
     def helmholtz_energy(self, rho, x):
 
         C = self.C
         m, d = self.m, self.d
+
+        dev = m.device
+        if rho.device != dev:
+            rho = rho.to(dev)
+        if x.device != dev:
+            x = x.to(dev)
 
         m_bar = (x*m).sum()
 
@@ -223,8 +240,7 @@ class pcsaft():
     def _energy_and_derivatives(self, rho, x, need_x=False):
         """One forward pass, both derivatives. The original code evaluated
         helmholtz_energy up to three times per Newton step."""
-        rho.requires_grad = True
-        x.requires_grad = True
+        rho, x = self._prepare(rho, x)
         f_res = self.helmholtz_energy(rho, x)
         if need_x:
             df_drho, df_dx = torch.autograd.grad(f_res, (rho, x), create_graph=True)
@@ -235,29 +251,28 @@ class pcsaft():
 
     def compressibility_factor(self, rho, x):
         _, df_drho, _ = self._energy_and_derivatives(rho, x)
-        return 1.0+rho*df_drho
+        return 1.0+rho.detach().to(self.m.device)*df_drho
 
     def pressure(self, rho, x):
         Z = self.compressibility_factor(rho, x)
+        rho = rho.detach().to(self.m.device)
         P = Z*kB*self.T*rho*1e30  # Pa
-        rho.requires_grad = False
-        x.requires_grad = False
         return P.detach()
 
     def chemical_potential(self, rho, x):
+        rho_d = rho.detach().to(self.m.device)
+        x_d = x.detach().to(self.m.device)
         f_res, df_drho, df_dx = self._energy_and_derivatives(rho, x, need_x=True)
-        Z = 1.0+rho*df_drho
-        mu_res = f_res+(Z-1.0)+df_dx-(x*df_dx).sum()
-        rho.requires_grad = False
-        x.requires_grad = False
+        Z = 1.0+rho_d*df_drho
+        mu_res = f_res+(Z-1.0)+df_dx-(x_d*df_dx).sum()
         return mu_res.detach()
 
     def fugacity_coefficient(self, rho, x):
+        rho_d = rho.detach().to(self.m.device)
+        x_d = x.detach().to(self.m.device)
         f_res, df_drho, df_dx = self._energy_and_derivatives(rho, x, need_x=True)
-        Z = 1.0+rho*df_drho
-        mu_res = f_res+(Z-1.0)+df_dx-(x*df_dx).sum()
-        rho.requires_grad = False
-        x.requires_grad = False
+        Z = 1.0+rho_d*df_drho
+        mu_res = f_res+(Z-1.0)+df_dx-(x_d*df_dx).sum()
         return torch.exp(mu_res.detach())/Z.detach()
 
     # -----------------------------------------------------------------
@@ -270,18 +285,18 @@ class pcsaft():
 
     def _residue_and_diff(self, rho, x, Psys):
         """res and dres/drho from a single forward pass."""
-        rho.requires_grad = True
-        x.requires_grad = True
+        rho, x = self._prepare(rho, x)
         f_res = self.helmholtz_energy(rho, x)
         df_drho = torch.autograd.grad(f_res, rho, create_graph=True)[0]
         Z = 1.0+rho*df_drho
         res = (Z*kB*self.T*rho-Psys)/Psys
         dres = torch.autograd.grad(res, rho)[0]
-        rho.requires_grad = False
-        x.requires_grad = False
         return res.detach(), dres.detach()
 
     def density(self, P, x, phase, tol=1e-10, max_it=1000):
+
+        dev = self.m.device
+        x = torch.as_tensor(x).detach().to(dev)
 
         if phase == 'vap':
             eta = 1e-10
@@ -290,12 +305,12 @@ class pcsaft():
             eta = 0.5
             rho0 = eta/((pi/6.)*(x*self.m*self.d**3).sum())
         else:
-            rho0 = phase
+            rho0 = torch.as_tensor(phase).detach().to(dev)
 
         rho0 = torch.clone(rho0.detach())
-        Psys = P*1e-30
+        Psys = torch.as_tensor(P).detach().to(dev)*1e-30
         for _ in range(max_it):
-            res, dres = self._residue_and_diff(rho0, x.detach(), Psys)
+            res, dres = self._residue_and_diff(rho0, x, Psys)
             rho0 = torch.clone(rho0-res/dres)
             if abs(res) < tol:
                 break
@@ -304,7 +319,8 @@ class pcsaft():
 
     def vapor_pressure(self, P0, tol=1e-10, max_it=1000):
 
-        x = torch.tensor([1.0], device=self.device)
+        x = torch.ones(self.Nc, device=self.m.device)/self.Nc
+        P0 = torch.as_tensor(P0).detach().to(self.m.device)
 
         for _ in range(max_it):
             rhoV = self.density(P0, x, 'vap')

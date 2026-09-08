@@ -37,8 +37,6 @@ class dft_core():
         if self.q is not None:
             q2_0 = 1e-19*self.q**2/(m0*epsilon0*self.kB*sigma0**5)
 
-        # every combining rule and every constant that depends only on
-        # (parameters, T) is built once, on device -- shared with pcsaft_eos
         C = mixing_tensors(m0, sigma0, epsilon0, self.T, q2=q2_0,device=device)
         self.C = C
         self.m = C['m']
@@ -70,23 +68,16 @@ class dft_core():
         self.z = torch.linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], n[2], device=device)
         self.X, self.Y, self.Z = torch.meshgrid(self.x, self.y, self.z, indexing='ij')
 
-        # rho is real: only the non-redundant half of the last axis is needed
         kx = np.fft.fftfreq(n[0], d=self.cell_size[0])
         ky = np.fft.fftfreq(n[1], d=self.cell_size[1])
         kz = np.fft.rfftfreq(n[2], d=self.cell_size[2])
         Kx, Ky, Kz = np.meshgrid(kx, ky, kz, indexing='ij')
         K = np.sqrt(Kx**2+Ky**2+Kz**2)
 
-        # M = number of non-redundant k-values per axis (Lanczos sigma-factor).
-        # N//2+1 is exact for both parities.
-        M = np.asarray(self.grid_shape)//2+1
-        kcut = M/self.system_size
-        # must be evaluated on the 3D meshgrid, not on the 1D frequency axes
+        kcut = (np.asarray(self.grid_shape)//2+1)/self.system_size
         lanczos_term = lancsoz(Kx, Ky, Kz, kcut)
         Rn = d0.numpy()*0.5 if hasattr(d0, 'numpy') else np.asarray(0.5*d0)
 
-        # all of these are purely REAL: stored as real tensors, which halves
-        # the memory and turns complex*complex into complex*real
         shape_k = K.shape
         w2_hat = np.empty((self.Nc,)+shape_k)
         w3_hat = np.empty_like(w2_hat)
@@ -108,12 +99,8 @@ class dft_core():
             w3hc_hat[i] = (j0_4+j2_4)*lanczos_term
             wdisp_hat[i] = (j0_4p+j2_4p)*lanczos_term
 
-        # w2vec_hat = -i 2 pi K w3_hat is purely imaginary; only 2 pi K is
-        # stored (3 real arrays instead of 3*Nc complex ones)
         kvec = 2.0*pi*np.stack([Kx, Ky, Kz])
-        # on an even axis the Nyquist bin is its own conjugate partner, so the
-        # odd gradient kernel has no consistent sign there; zeroing it is the
-        # standard treatment and makes rfftn match the full complex transform
+        
         if n[0] % 2 == 0:
             kvec[:, n[0]//2, :, :] = 0.0
         if n[1] % 2 == 0:
@@ -173,8 +160,6 @@ class dft_core():
         f1 = -torch.log(one_minus_n3)
         f2 = one_minus_n3.reciprocal()
 
-        # f4 loses all precision as n3 -> 0; both branches of the where are
-        # evaluated on a clamped n3 so neither value nor gradient can be NaN
         n3s = self.n3.clamp(min=1e-4)
         omn3s = 1.0-n3s
         omn3s_sq = omn3s*omn3s
@@ -182,9 +167,6 @@ class dft_core():
                          (n3s+omn3s_sq*torch.log(omn3s))/(36.0*pi*n3s*n3s*omn3s_sq),
                          1/(24*pi)+2/(27*pi)*self.n3+5/(48*pi)*self.n3**2)
 
-        # NOTE: in a mixture n1 and n2 carry different per-component weights,
-        # so the (n2^2 - n2vec^2)/(4 pi R) identity used in the LJ code does
-        # NOT hold here. n1 and n1vec are kept.
         n1_n2 = self.n1*self.n2
         n2_sq = self.n2*self.n2
         n2vec_sq = (self.n2vec*self.n2vec).sum(dim=0).clamp(max=n2_sq)
@@ -212,8 +194,6 @@ class dft_core():
             omz = 1.0-zeta3
             dz = self._d4*zeta2
             ydd = 1.0/omz+1.5*dz/omz**2+0.5*dz*dz/omz**3
-            # n2_hc can ring slightly negative near a wall; log of that is NaN
-            # and one NaN poisons the whole sum
             ydd_n2 = (ydd*self.n2_hc).clamp(min=1e-300)
             self.Phi_hc = ((self._m4-1.0)*self.rho
                            * (torch.log(self.rho)-torch.log(ydd_n2))).sum(dim=0)
@@ -292,7 +272,7 @@ class dft_core():
     def initial_condition(self, bulk_density, composition, Vext, potential_cutoff=50.0):
 
         self.rhob = bulk_density*composition
-        self.eos = pcsaft(self.pcsaft_parameters, self.T, device=self.device)
+        self.eos = pcsaft(self.pcsaft_parameters, self.T)
         self.mu = (self.eos.chemical_potential(bulk_density, composition)
                    + torch.log(self.rhob)).to(device=self.device)
         self.rhob = self.rhob.to(device=self.device)
