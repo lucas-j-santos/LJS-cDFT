@@ -55,20 +55,16 @@ class dft_core():
         # --- grid ------------------------------------------------------
         self.npz = int(points)                    # grid points along z
         self.shape = (self.Nc, self.npz)          # shape of rho
-        self.npoints = self.Nc*self.npz           # used by the shared solvers
+        self.npoints = self.Nc*self.npz           
         self.sqrt_npoints = np.sqrt(self.npoints)
 
         self.cell_size = system_size/points
         self.z = torch.linspace(0.5*self.cell_size, system_size-0.5*self.cell_size, self.npz, device=device)
 
-        # rho is real: half spectrum only
         kz = np.fft.rfftfreq(self.npz, d=self.cell_size)
         k = np.abs(kz)
 
-        # M = number of non-redundant k-values. The original used kz.max(),
-        # which for even N is (N/2-1)/L instead of (N/2+1)/L.
-        M = self.npz//2+1
-        kcut = M/self.system_size
+        kcut = (self.npz//2+1)/self.system_size
         lanczos_term = lancsoz(kz, kcut)
 
         Rn = np.asarray(0.5*d0)
@@ -154,8 +150,6 @@ class dft_core():
                          (n3s+omn3s_sq*torch.log(omn3s))/(36.0*np.pi*n3s*n3s*omn3s_sq),
                          1/(24*np.pi)+2/(27*np.pi)*self.n3+5/(48*np.pi)*self.n3**2)
 
-        # in a mixture n1 and n2 carry different per-component weights, so the
-        # (n2^2 - n2vec^2)/(4 pi R) identity of the LJ code does NOT apply
         n1_n2 = self.n1*self.n2
         n2_sq = self.n2*self.n2
         n2vec_sq = (self.n2vec*self.n2vec).clamp(max=n2_sq)
@@ -183,8 +177,6 @@ class dft_core():
             omz = 1.0-zeta3
             dz = self._d2*zeta2
             ydd = 1.0/omz+1.5*dz/omz**2+0.5*dz*dz/omz**3
-            # n2_hc can ring slightly negative near a wall; one NaN from the
-            # log would poison the whole sum
             ydd_n2 = (ydd*self.n2_hc).clamp(min=1e-300)
             self.Phi_hc = ((self._m2-1.0)*self.rho
                            * (torch.log(self.rho)-torch.log(ydd_n2))).sum(dim=0)

@@ -98,15 +98,9 @@ class anderson():
         mmax = anderson_mmax  # Number of previous iterations to store
         damping = anderson_damping  # Damping coefficient
 
-        # Pre-allocated circular history buffers. The Anderson condition
-        # (minimise ||sum_i a_i r_i|| subject to sum_i a_i = 1) does not depend
-        # on the ordering of the history, so old entries can simply be
-        # overwritten instead of shifting the whole buffer every iteration.
         N = dft.npoints
         resm = torch.zeros((mmax, N), device=dft.device, dtype=dft.rho.dtype)
         rhom = torch.zeros((mmax, N), device=dft.device, dtype=dft.rho.dtype)
-        # Gram matrix of the stored residuals, updated one row/column per
-        # iteration instead of being rebuilt from m^2 inner products.
         gram = torch.zeros((mmax, mmax), device=dft.device, dtype=dft.rho.dtype)
 
         m = 0
@@ -133,7 +127,6 @@ class anderson():
             gram[:m, slot] = new_row
 
             # Solve the small bordered system on the CPU: it is (m+1)x(m+1)
-            # with m <= 10, so a GPU solve is pure launch latency.
             R = np.zeros((m+1, m+1))
             R[:m, :m] = gram[:m, :m].cpu().numpy()
             R[:m, m] = 1.0
@@ -149,8 +142,6 @@ class anderson():
                 anderson_alpha[slot] = 1.0
 
             a = torch.as_tensor(anderson_alpha, device=dft.device, dtype=rhom.dtype)
-            # Two matrix-vector products instead of building the (m, N)
-            # combination rhom + damping*resm as a temporary.
             lnrho = (a.matmul(rhom[:m])+damping*a.matmul(resm[:m])).view(dft.shape)
             dft.rho = torch.exp(lnrho)
             dft.it += 1
@@ -173,8 +164,7 @@ class fire():
         finc = 1.1
         fdec = 0.5
         fa = 0.99
-        # Velocity. Stays exactly zero on the excluded cells because the
-        # residual is zero there, so no masking is needed.
+ 
         V = torch.zeros_like(dft.rho)
 
         lnrho = torch.log(dft.rho)

@@ -38,7 +38,6 @@ class dft_core():
         self.points = points
         self.device = device
 
-        # Shared with the solvers, which work on flat arrays.
         self.npoints = int(points)
         self.shape = (self.npoints,)
         self.sqrt_npoints = np.sqrt(self.npoints)
@@ -57,7 +56,6 @@ class dft_core():
         self.z = torch.linspace(0.5*self.cell_size, system_size-0.5*self.cell_size,
                                 self.npoints, device=device)
 
-        # rho is real, so only the non-redundant half of the spectrum is needed.
         kz = np.fft.rfftfreq(self.npoints, d=self.cell_size)
         kcut = (self.npoints//2+1)/self.system_size
         k = np.abs(kz)
@@ -67,8 +65,6 @@ class dft_core():
         four_pi_R_K = 2.0*two_pi_R_K
         lanczos_term = lancsoz(kz, kcut)
 
-        # w2, w3, watt and ulj are purely real, so they are stored as real
-        # tensors: half the memory and a cheaper complex*real product.
         w2_hat = self.four_pi_R_sq*spherical_jn(0, two_pi_R_K)*lanczos_term
         w3_hat = (4./3.)*pi*self.R_cu*(spherical_jn(0, two_pi_R_K)+spherical_jn(2, two_pi_R_K)) \
             *lanczos_term
@@ -78,15 +74,8 @@ class dft_core():
         eps = 1.857708161877173*self.epsilon*np.array([1,-1])
         ulj_hat = (yukawa_ft(k,self.sigma,eps[0],l[0])+yukawa_ft(k,self.sigma,eps[1],l[1]))*lanczos_term
 
-        # w2vec_hat = -i 2 pi kz w3_hat is purely imaginary. Only the real
-        # vector 2 pi kz is kept; the -i and w3_hat are applied on the fly.
         kvec = 2.0*pi*kz.copy()
 
-        # The gradient kernel is odd in k, but for an even number of points the
-        # Nyquist bin is its own conjugate partner and carries no consistent
-        # sign, so the convolution stops being Hermitian there. Zeroing the
-        # derivative on that bin is the standard treatment and also makes the
-        # rfft result identical to the full complex transform.
         if self.npoints % 2 == 0:
             kvec[-1] = 0.0
 
@@ -96,7 +85,6 @@ class dft_core():
         self.ulj_hat = torch.tensor(ulj_hat, device=device)
         self.kvec = torch.tensor(kvec, device=device)
 
-        # Clear temporary arrays to free memory
         del kz,k,two_pi_R_K,four_pi_R_K,lanczos_term,kvec
         del w2_hat,w3_hat,watt_hat,ulj_hat
 
@@ -134,10 +122,6 @@ class dft_core():
                          /(36*pi*n3s*n3s*one_minus_n3s_sq),
                          1/(24*pi) + 2/(27*pi)*self.n3 + 5/(48*pi)*self.n3**2)
 
-        # n1 = n2/(4 pi R) and n1vec = n2vec/(4 pi R), so
-        #   n1*n2 - n1vec*n2vec = (n2^2 - n2vec^2)/(4 pi R),
-        # and clamping n1vec*n2vec <= n1*n2 is the same as clamping
-        # n2vec^2 <= n2^2. This drops n1 and n1vec entirely.
         n2_sq = self.n2*self.n2
         n2vec_sq = (self.n2vec*self.n2vec).clamp(max=n2_sq)
         vec_term = (n2_sq-n2vec_sq)/self.four_pi_R
@@ -181,10 +165,6 @@ class dft_core():
     def euler_lagrange(self, lnrho, fmt='WB'):
 
         self.functional_derivative(fmt)
-        # Multiplying by a 0/1 mask instead of boolean indexing: advanced
-        # indexing calls nonzero() internally, which forces a device sync on
-        # every use. The excluded cells get exactly zero residual, so the
-        # solvers can then work on the full array.
         self.res = (self.mu-self.dFres-self.Vext-lnrho)*self.valid
 
     def loss(self):
