@@ -102,11 +102,11 @@ class dft_core():
         kvec = 2.0*pi*np.stack([Kx, Ky, Kz])
         
         if n[0] % 2 == 0:
-            kvec[:, n[0]//2, :, :] = 0.0
+            kvec[0, n[0]//2, :, :] = 0.0
         if n[1] % 2 == 0:
-            kvec[:, :, n[1]//2, :] = 0.0
+            kvec[1, :, n[1]//2, :] = 0.0
         if n[2] % 2 == 0:
-            kvec[:, :, :, -1] = 0.0
+            kvec[2, :, :, -1] = 0.0
 
         self.w2_hat = torch.tensor(w2_hat, device=device)
         self.w3_hat = torch.tensor(w3_hat, device=device)

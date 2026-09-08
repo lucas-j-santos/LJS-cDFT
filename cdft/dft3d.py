@@ -132,14 +132,16 @@ class dft_core():
         self.watt_hat = torch.tensor(watt_hat, device=device)
         self.ulj_hat = torch.tensor(ulj_hat, device=device)
 
+        # w2vec_hat = -2 pi i K w3_hat is purely imaginary. Only the real
+        # vector 2 pi K is stored; the -i and w3_hat are applied on the fly.
         kvec = 2.0*pi*np.stack([Kx, Ky, Kz])
 
         if self.shape[0] % 2 == 0:
-            kvec[:, self.shape[0]//2, :, :] = 0.0
+            kvec[0, self.shape[0]//2, :, :] = 0.0
         if self.shape[1] % 2 == 0:
-            kvec[:, :, self.shape[1]//2, :] = 0.0
+            kvec[1, :, self.shape[1]//2, :] = 0.0
         if self.shape[2] % 2 == 0:
-            kvec[:, :, :, -1] = 0.0
+            kvec[2, :, :, -1] = 0.0
 
         self.kvec = torch.tensor(kvec, device=device)
 
