@@ -283,8 +283,6 @@ class dft_core():
     def euler_lagrange(self, lnrho, fmt='ASWB'):
 
         self.functional_derivative(fmt)
-        # 0/1 mask instead of boolean indexing: advanced indexing calls
-        # nonzero() internally and forces a device sync on every use
         self.res = (self.mu[:, None, None, None]-self.dFres-self.Vext-lnrho)*self.valid
 
     def loss(self):
