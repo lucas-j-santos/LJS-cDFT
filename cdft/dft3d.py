@@ -237,7 +237,21 @@ class dft_core():
     def euler_lagrange(self, lnrho, fmt):
 
         self.helmholtz_functional_derivative(fmt)
-        self.res = (self.mu-lnrho-self.dFex-self.Vext)*self.valid
+
+        if self.N_target is None:
+            # grande canonico: mu dado
+            self.res = (self.mu-lnrho-self.dFex-self.Vext)*self.valid
+        else:
+            # canonico: mu e multiplicador de Lagrange do vinculo
+            #   dV * sum_j exp(mu + g_j) = N,   g = -dFex - Vext
+            # -> mu = ln N - ln dV - logsumexp(g)
+            # O ramo instavel e sela de Omega a mu fixo, mas minimo de F a
+            # N fixo, entao aqui os solvers de sempre alcancam ele.
+            g = -(self.dFex+self.Vext)
+            g_valid = torch.where(self.valid, g, self._neg_inf)
+            self.mu = (np.log(self.N_target)-np.log(self.cell_volume)
+                       - torch.logsumexp(g_valid.reshape(-1), dim=0))
+            self.res = (self.mu+g-lnrho)*self.valid
 
     def loss(self):
         return torch.linalg.vector_norm(self.res)/self.sqrt_npoints
@@ -254,20 +268,37 @@ class dft_core():
         self.valid = self.Vext < potential_cutoff
         self.Vext[self.excluded] = potential_cutoff
 
+        # modo canonico desligado por padrao; ligado por N_target em
+        # equilibrium_density_profile
+        self.N_target = None
+        self._neg_inf = torch.tensor(float('-inf'), device=self.device)
+
         self.rho = torch.empty(self.shape, device=self.device)
         if model == 'bulk':
             self.rho[:] = self.rhob
         elif model == 'ideal':
             self.rho = self.rhob*torch.exp(-self.Vext)
 
-    def equilibrium_density_profile(self, bulk_density, fmt='ASWB', solver='anderson',
+    def equilibrium_density_profile(self, bulk_density=None, fmt='ASWB', solver='anderson',
                                     alpha0=0.2, dt=0.1, anderson_mmax=10, anderson_damping=0.1,
-                                    tol=1e-6, max_it=1000, logoutput=False):
+                                    tol=1e-6, max_it=1000, logoutput=False, N_target=None):
+        """N_target=None reproduz exatamente o comportamento anterior.
+
+        Com N_target, roda no ensemble canonico: o numero de moleculas e
+        imposto e mu sai como resultado (self.mu). E assim que se alcanca
+        o ramo instavel da histerese, que a mu fixo e um ponto de sela.
+        """
 
         self.fmt = fmt
-        self.mu = (self.eos.chemical_potential(bulk_density)
-                   +torch.log(bulk_density)).to(device=self.device)
-        self.rhob = torch.as_tensor(bulk_density).to(device=self.device)
+        self.N_target = None if N_target is None else float(N_target)
+
+        if self.N_target is None:
+            if bulk_density is None:
+                raise ValueError("bulk_density e obrigatorio sem N_target")
+            self.mu = (self.eos.chemical_potential(bulk_density)
+                       +torch.log(bulk_density)).to(device=self.device)
+            self.rhob = torch.as_tensor(bulk_density).to(device=self.device)
+
         self.rho = self.rho.detach().clone()
         self.rho[self.excluded] = 1e-16
 
@@ -290,3 +321,7 @@ class dft_core():
         self.total_molecules = (self.rho*self.valid).sum().cpu()*self.cell_volume
         Phi = self.rho*(torch.log(self.rho)-1.0)+self.rho*(self.Vext-self.mu)
         self.Omega = Phi.sum()*self.cell_volume+self.Fex.detach()
+
+        # self.mu fica com o valor do vinculo; N_target volta a None para
+        # nao contaminar a proxima chamada
+        self.N_target = None
