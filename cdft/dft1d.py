@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from scipy.special import spherical_jn
-from .lj_eos_thol import lj_eos
+from .lj_eos import lj_eos
 from .solvers import *
 
 kB = 1.380649e-23
