@@ -133,7 +133,7 @@ class dft_core():
         self.ulj_hat = torch.tensor(ulj_hat, device=device)
 
         # w2vec_hat = -2 pi i K w3_hat is purely imaginary. Only the real
-        # vector 2 pi K is stored; the -i and w3_hat are applied on the fly.
+        # vector 2 pi K is stored; the -i and w3_hat are applied on the fly
         kvec = 2.0*pi*np.stack([Kx, Ky, Kz])
 
         if self.orthogonal:
