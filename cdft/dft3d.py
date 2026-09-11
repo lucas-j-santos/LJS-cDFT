@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from scipy.special import spherical_jn
-from .lj_eos_thol import lj_eos
+from .lj_eos import lj_eos
 from .solvers import *
 
 torch.set_default_dtype(torch.float64)
