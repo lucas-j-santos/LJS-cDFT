@@ -188,8 +188,7 @@ class dft_core():
         one_minus_n3_safe_sq = one_minus_n3_safe*one_minus_n3_safe
         f4 = torch.where(
             self.n3 > 1e-4,
-            (n3_safe+one_minus_n3_safe_sq*torch.log(one_minus_n3_safe))
-            /(36.0*pi*n3_safe*n3_safe*one_minus_n3_safe_sq),
+            (n3_safe+one_minus_n3_safe_sq*torch.log(one_minus_n3_safe))/(36.0*pi*n3_safe*n3_safe*one_minus_n3_safe_sq),
             1.0/(24.0*pi)+(2.0/(27.0*pi))*self.n3+(5.0/(48.0*pi))*self.n3**2)
 
         n2_sq = self.n2*self.n2
@@ -197,40 +196,42 @@ class dft_core():
         vec_term = (n2_sq-n2vec_sq)/self.four_pi_R
 
         if fmt == 'WB':
-
-            self.Phi_hs = f1*self.n0+f2*vec_term+f4*(n2_sq*self.n2-3.0*self.n2*n2vec_sq)
+            Phi_hs = f1*self.n0+f2*vec_term+f4*(n2_sq*self.n2-3.0*self.n2*n2vec_sq)
 
         elif fmt == 'ASWB':
-
             xi = (n2vec_sq/n2_sq).clamp(max=1.0-1e-16)
-            self.Phi_hs = f1*self.n0+f2*vec_term+f4*(self.n2*n2_sq)*(1.0-xi)**3
+            Phi_hs = f1*self.n0+f2*vec_term+f4*(self.n2*n2_sq)*(1.0-xi)**3
 
         else:
             raise ValueError("fmt must be 'WB' or 'ASWB'")
 
-        self.Fhs = self.Phi_hs.sum()*self.cell_volume
+        self.F_hs = Phi_hs.sum()*self.cell_volume
+
+        del Phi_hs
 
         # Attractive Contribution
-        self.Phi_mfa = 0.5*self.rho*self.ulj/self.T
+        Phi_mfa = 0.5*self.rho*self.ulj/self.T
+        self.F_mfa = Phi_mfa.sum()*self.cell_volume 
 
         eta = (self.rhobar*(pi*self.d**3/6.0)).clamp(max=1.0-1e-16)
         one_minus_eta = 1.0-eta
         eos_term = self.eos.helmholtz_energy(self.rhobar)
         correction_term_hs = (4.0*eta-3.0*eta*eta)/(one_minus_eta*one_minus_eta)
         correction_term_mfa = -(16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
-        self.Phi_cor = eos_term-correction_term_hs-correction_term_mfa
+        Phi_corr = self.rhobar*(eos_term-correction_term_hs-correction_term_mfa)
+        self.F_corr = Phi_corr.sum()*self.cell_volume 
 
-        self.Phi_att = self.Phi_mfa+self.rhobar*self.Phi_cor
+        del Phi_mfa, Phi_corr
 
-        self.Fatt = self.Phi_att.sum()*self.cell_volume
-
-        self.Fex = self.Fhs+self.Fatt
+        self.F_att = self.F_mfa+self.F_corr
+        
+        self.F_ex = self.F_hs+self.F_att
 
     def helmholtz_functional_derivative(self, fmt):
 
         self.helmholtz_functional(fmt)
-        self.dFex = torch.autograd.grad(self.Fex, self.rho)[0]
-        self.dFex = self.dFex.detach()/self.cell_volume
+        self.dF_ex = torch.autograd.grad(self.F_ex, self.rho)[0]
+        self.dF_ex = self.dF_ex.detach()/self.cell_volume
 
         self.rho.requires_grad=False
 
@@ -239,18 +240,13 @@ class dft_core():
         self.helmholtz_functional_derivative(fmt)
 
         if self.N_target is None:
-            # grande canonico: mu dado
-            self.res = (self.mu-lnrho-self.dFex-self.Vext)*self.valid
+            # grand canonical
+            self.res = (self.mu-lnrho-self.dF_ex-self.Vext)*self.valid
         else:
-            # canonico: mu e multiplicador de Lagrange do vinculo
-            #   dV * sum_j exp(mu + g_j) = N,   g = -dFex - Vext
-            # -> mu = ln N - ln dV - logsumexp(g)
-            # O ramo instavel e sela de Omega a mu fixo, mas minimo de F a
-            # N fixo, entao aqui os solvers de sempre alcancam ele.
-            g = -(self.dFex+self.Vext)
+            # canonical
+            g = -(self.dF_ex+self.Vext)
             g_valid = torch.where(self.valid, g, self._neg_inf)
-            self.mu = (np.log(self.N_target)-np.log(self.cell_volume)
-                       - torch.logsumexp(g_valid.reshape(-1), dim=0))
+            self.mu = (np.log(self.N_target)-np.log(self.cell_volume)-torch.logsumexp(g_valid.reshape(-1), dim=0))
             self.res = (self.mu+g-lnrho)*self.valid
 
     def loss(self):
@@ -259,8 +255,9 @@ class dft_core():
     def initial_condition(self, bulk_density, Vext, potential_cutoff=50.0, model='bulk'):
 
         self.eos = lj_eos(self.parameters, self.T, device=self.device)
-        self.mu = (self.eos.chemical_potential(bulk_density)
-                   +torch.log(bulk_density)).to(device=self.device)
+        self.mu_id = torch.log(bulk_density)
+        self.mu_ex = self.eos.chemical_potential(bulk_density) 
+        self.mu = (self.mu_id+self.mu_ex).to(device=self.device)
         self.rhob = torch.as_tensor(bulk_density).to(device=self.device)
 
         self.Vext = (Vext/self.T).to(device=self.device)
@@ -268,8 +265,6 @@ class dft_core():
         self.valid = self.Vext < potential_cutoff
         self.Vext[self.excluded] = potential_cutoff
 
-        # modo canonico desligado por padrao; ligado por N_target em
-        # equilibrium_density_profile
         self.N_target = None
         self._neg_inf = torch.tensor(float('-inf'), device=self.device)
 
@@ -282,21 +277,16 @@ class dft_core():
     def equilibrium_density_profile(self, bulk_density=None, fmt='ASWB', solver='anderson',
                                     alpha0=0.2, dt=0.1, anderson_mmax=10, anderson_damping=0.1,
                                     tol=1e-6, max_it=1000, logoutput=False, N_target=None):
-        """N_target=None reproduz exatamente o comportamento anterior.
-
-        Com N_target, roda no ensemble canonico: o numero de moleculas e
-        imposto e mu sai como resultado (self.mu). E assim que se alcanca
-        o ramo instavel da histerese, que a mu fixo e um ponto de sela.
-        """
 
         self.fmt = fmt
         self.N_target = None if N_target is None else float(N_target)
 
         if self.N_target is None:
             if bulk_density is None:
-                raise ValueError("bulk_density e obrigatorio sem N_target")
-            self.mu = (self.eos.chemical_potential(bulk_density)
-                       +torch.log(bulk_density)).to(device=self.device)
+                raise ValueError("bulk density is mandatory without N_target!")
+            self.mu_id = torch.log(bulk_density)
+            self.mu_ex = self.eos.chemical_potential(bulk_density) 
+            self.mu = (self.mu_id+self.mu_ex).to(device=self.device) 
             self.rhob = torch.as_tensor(bulk_density).to(device=self.device)
 
         self.rho = self.rho.detach().clone()
@@ -308,20 +298,21 @@ class dft_core():
         elif solver == 'picard_ls':
             picard_line_search(self,alpha0,tol,max_it,logoutput)
 
-        elif solver == 'anderson':
-            anderson(self,anderson_mmax,anderson_damping,tol,max_it,logoutput)
-
         elif solver == 'fire':
             fire(self,alpha0,dt,tol,max_it,logoutput)
+
+        elif solver == 'anderson':
+            anderson(self,anderson_mmax,anderson_damping,tol,max_it,logoutput)
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         self.error = self.error.cpu()
 
         self.total_molecules = (self.rho*self.valid).sum().cpu()*self.cell_volume
-        Phi = self.rho*(torch.log(self.rho)-1.0)+self.rho*(self.Vext-self.mu)
-        self.Omega = Phi.sum()*self.cell_volume+self.Fex.detach()
+        Phi_id = self.rho*(torch.log(self.rho)-1.0)
+        self.F_id = Phi_id.sum()*self.cell_volume  
+        self.F = self.F_id+self.F_ex.detach() 
+        self.Omega = self.F+(self.rho*(self.Vext-self.mu)).sum()*self.cell_volume
 
-        # self.mu fica com o valor do vinculo; N_target volta a None para
-        # nao contaminar a proxima chamada
+        del Phi_id
         self.N_target = None
