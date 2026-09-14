@@ -150,7 +150,7 @@ class dft_core():
         self.ni_disp = torch.fft.irfftn(self.rho_hat*self.wdisp_hat, dim=(1, 2, 3), s=s)
 
     # -----------------------------------------------------------------
-    def functional(self, fmt):
+    def helmholtz_functional(self, fmt):
 
         self.weighted_densities()
         C = self.C
@@ -173,20 +173,18 @@ class dft_core():
         n1vec_n2vec = (self.n1vec*self.n2vec).sum(dim=0).clamp(max=n1_n2)
 
         if fmt == 'WB':
-            self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec) \
-                + f4*(n2_sq*self.n2-3.0*self.n2*n2vec_sq)
+            Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*(n2_sq*self.n2-3.0*self.n2*n2vec_sq)
         elif fmt == 'ASWB':
             xi = (n2vec_sq/n2_sq).clamp(max=1.0-1e-16)
-            self.Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec) \
-                + f4*(self.n2*n2_sq)*(1.0-xi)**3
+            Phi_hs = f1*self.n0+f2*(n1_n2-n1vec_n2vec)+f4*(self.n2*n2_sq)*(1.0-xi)**3
         else:
             raise ValueError("fmt must be 'WB' or 'ASWB'")
 
-        self.F_hs = self.Phi_hs.sum()*self.cell_volume
+        self.F_hs = Phi_hs.sum()*self.cell_volume
 
         # ---- Hard-Chain --------------------------------------------
         if self.spherical:
-            self.Phi_hc = torch.zeros_like(self.Phi_hs)
+            Phi_hc = torch.zeros_like(self.Phi_hs)
         else:
             zeta2 = (pi/6.)*torch.einsum('i...,i->...', self.n3_hc, self.m*self.d**2)
             zeta3 = ((pi/6.)*torch.einsum('i...,i->...', self.n3_hc, self.m*self.d**3)) \
@@ -194,15 +192,15 @@ class dft_core():
             omz = 1.0-zeta3
             dz = self._d4*zeta2
             ydd = 1.0/omz+1.5*dz/omz**2+0.5*dz*dz/omz**3
-            ydd_n2 = (ydd*self.n2_hc).clamp(min=1e-300)
-            self.Phi_hc = ((self._m4-1.0)*self.rho
+            ydd_n2 = (ydd*self.n2_hc).clamp(min=1e-15)
+            Phi_hc = ((self._m4-1.0)*self.rho
                            * (torch.log(self.rho)-torch.log(ydd_n2))).sum(dim=0)
 
-        self.F_hc = self.Phi_hc.sum()*self.cell_volume
+        self.F_hc = Phi_hc.sum()*self.cell_volume
 
         # ---- Dispersive --------------------------------------------
         n_disp = self.ni_disp.sum(dim=0)
-        xbar = self.ni_disp/n_disp.clamp(min=1e-300)
+        xbar = self.ni_disp/n_disp.clamp(min=1e-15)
         mbar = torch.einsum('i...,i->...', xbar, self.m)
         etabar = ((pi/6.0)*torch.einsum('i...,i->...', self.ni_disp, self.m*self.d**3)) \
             .clamp(max=1.0-1e-15)
@@ -225,12 +223,12 @@ class dft_core():
         mix2 = torch.einsum('i...,ij,j...->...', xbar, C['A2'], xbar)
 
         a_disp = (-2.0*I1*mix1-mbar*C1*I2*mix2)*pi*n_disp
-        self.Phi_disp = n_disp*a_disp
-        self.F_disp = self.Phi_disp.sum()*self.cell_volume
+        Phi_disp = n_disp*a_disp
+        self.F_disp = Phi_disp.sum()*self.cell_volume
 
         # ---- Quadrupolar -------------------------------------------
         if self.q is None:
-            self.Phi_qq = torch.zeros_like(self.Phi_hs)
+            Phi_qq = torch.zeros_like(Phi_disp)
         else:
             # every per-component constant is folded into AB2 and C3 at init,
             # so the 10- and 16-operand einsums collapse to one quadratic and
@@ -246,24 +244,24 @@ class dft_core():
 
             f_q2 = -f_q2*pi*0.5625*n_disp
             f_q3 = f_q3*pi**2*0.5625*n_disp**2
-            self.Phi_qq = n_disp*(f_q2/(1.0-f_q3/f_q2))
+            Phi_qq = n_disp*(f_q2/(1.0-f_q3/f_q2))
 
-        self.F_qq = self.Phi_qq.sum()*self.cell_volume
+        self.F_qq = Phi_qq.sum()*self.cell_volume
 
-        self.Fres = self.F_hs+self.F_hc+self.F_disp+self.F_qq
+        self.F_ex = self.F_hs+self.F_hc+self.F_disp+self.F_qq
 
     # -----------------------------------------------------------------
-    def functional_derivative(self, fmt):
+    def helmholtz_functional_derivative(self, fmt):
 
-        self.functional(fmt)
-        self.dFres = torch.autograd.grad(self.Fres, self.rho)[0]
-        self.dFres = self.dFres.detach()/self.cell_volume
+        self.helmholtz_functional(fmt)
+        self.dF_ex = torch.autograd.grad(self.F_ex, self.rho)[0]
+        self.dF_ex = self.dF_ex.detach()/self.cell_volume
         self.rho.requires_grad = False
 
     def euler_lagrange(self, lnrho, fmt='ASWB'):
 
-        self.functional_derivative(fmt)
-        self.res = (self.mu[:, None, None, None]-self.dFres-self.Vext-lnrho)*self.valid
+        self.helmholtz_functional_derivative(fmt)
+        self.res = (self.mu[:, None, None, None]-self.dF_ex-self.Vext-lnrho)*self.valid
 
     def loss(self):
         return torch.linalg.vector_norm(self.res)/self.sqrt_npoints
@@ -271,10 +269,11 @@ class dft_core():
     # -----------------------------------------------------------------
     def initial_condition(self, bulk_density, composition, Vext, potential_cutoff=50.0):
 
-        self.rhob = bulk_density*composition
+        self.rhob = (bulk_density*composition)
         self.eos = pcsaft(self.pcsaft_parameters, self.T)
-        self.mu = (self.eos.chemical_potential(bulk_density, composition)
-                   + torch.log(self.rhob)).to(device=self.device)
+        self.mu_id = torch.log(self.rhob)
+        self.mu_ex = self.eos.chemical_potential(bulk_density, composition) 
+        self.mu = (self.mu_id+self.mu_ex).to(device=self.device)
         self.rhob = self.rhob.to(device=self.device)
 
         self.Vext = (Vext/self.T).to(device=self.device)
@@ -291,9 +290,11 @@ class dft_core():
                                     anderson_mmax=10, anderson_damping=0.1,
                                     tol=1e-6, max_it=1000, logoutput=False):
 
-        self.rhob = (bulk_density*composition).to(device=self.device)
-        self.mu = (self.eos.chemical_potential(bulk_density, composition)
-                   + torch.log(bulk_density*composition)).to(device=self.device)
+        self.rhob = (bulk_density*composition)
+        self.mu_id = torch.log(self.rhob)
+        self.mu_ex = self.eos.chemical_potential(bulk_density, composition) 
+        self.mu = (self.mu_id+self.mu_ex).to(device=self.device)
+        self.rhob = self.rhob.to(device=self.device)
         self.fmt = fmt
 
         self.rho = self.rho.detach().clone()
@@ -301,10 +302,13 @@ class dft_core():
 
         if solver == 'picard':
             picard(self, alpha0, tol, max_it, logoutput)
+
         elif solver == 'picard_ls':
             picard_line_search(self, alpha0, tol, max_it, logoutput)
+
         elif solver == 'anderson':
             anderson(self, anderson_mmax, anderson_damping, tol, max_it, logoutput)
+
         elif solver == 'fire':
             fire(self, alpha0, dt, tol, max_it, logoutput)
 
@@ -312,11 +316,11 @@ class dft_core():
             torch.cuda.empty_cache()
         self.error = self.error.cpu()
 
-        self.total_molecules = torch.empty(self.Nc)
-        Phi = torch.zeros_like(self.Phi_disp)
-        for i in range(self.Nc):
-            self.total_molecules[i] = (self.rho[i]*self.valid[i]).sum().cpu()*self.cell_volume
-            Phi += self.rho[i]*(torch.log(self.rho[i])-1.0) \
-                + self.rho[i]*(self.Vext[i]-self.mu[i])
+        self.total_molecules = (self.rho*self.valid).sum(dim=(1,2,3)).cpu()*self.cell_volume
 
-        self.Omega = Phi.sum()*self.cell_volume+self.Fres.detach()
+        self.F_id = (self.rho*(torch.log(self.rho)-1.0)).sum()*self.cell_volume
+        self.F_ext = (self.rho*self.Vext).sum()*self.cell_volume
+    
+        self.F_intr = self.F_id+self.F_ex.detach()
+        self.F = self.F_intr+self.F_ext
+        self.Omega = self.F-(self.mu*self.total_molecules.to(self.F.device)).sum()

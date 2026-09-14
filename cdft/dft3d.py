@@ -298,24 +298,23 @@ class dft_core():
         elif solver == 'picard_ls':
             picard_line_search(self,alpha0,tol,max_it,logoutput)
 
+        elif solver == 'anderson':
+            anderson(self,anderson_mmax,anderson_damping,tol,max_it,logoutput)
+
         elif solver == 'fire':
             fire(self,alpha0,dt,tol,max_it,logoutput)
 
-        elif solver == 'anderson':
-            anderson(self,anderson_mmax,anderson_damping,tol,max_it,logoutput)
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         self.error = self.error.cpu()
 
         self.total_molecules = (self.rho*self.valid).sum().cpu()*self.cell_volume
-        Phi_id = self.rho*(torch.log(self.rho)-1.0)
-        self.F_id = Phi_id.sum()*self.cell_volume
+        self.F_id = (self.rho*(torch.log(self.rho)-1.0)).sum()*self.cell_volume
         self.F_ext = (self.rho*self.Vext).sum()*self.cell_volume
  
         self.F_intr = self.F_id+self.F_ex.detach()
         self.F = self.F_intr+self.F_ext
         self.Omega = self.F-self.mu*self.total_molecules.to(self.F.device)
- 
-        del Phi_id
+        
         self.N_target = None
