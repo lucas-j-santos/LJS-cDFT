@@ -1,24 +1,9 @@
 import numpy as np
+from scipy.optimize import brentq
 import torch
 
-
-# =====================================================================
-# Varredura em N com o dft3d no modo canonico.
-#
-# Percorre a isoterma inteira -- ramo instavel incluido -- e devolve
-# mu(N), de onde sai P(N) invertendo a EOS bulk. Os extremos de mu(N)
-# sao as espinodais; a construcao de Maxwell da a transicao de
-# equilibrio.
-#
-# NAO TESTADO: valide primeiro com o check_canonical() abaixo.
-# =====================================================================
-
-
 def bulk_density_from_mu(eos, mu, rho_guess, tol=1e-12, max_it=200):
-    """Inverte  mu = ln(rho_b) + mu_ex(rho_b)  por secante.
 
-    mu(rho) e monotono crescente no gas estavel, entao a secante basta.
-    """
     mu = float(mu)
 
     def f(rho):
@@ -42,11 +27,7 @@ def bulk_density_from_mu(eos, mu, rho_guess, tol=1e-12, max_it=200):
 
 
 def check_canonical(dft, bulk_density, fmt='ASWB', solver='anderson', **kw):
-    """Teste de sanidade: resolve no grande canonico, pega o N que saiu,
-    reimpoe esse N no canonico e confere que mu volta ao mesmo valor.
 
-    Se isto nao fechar, nao confie na varredura.
-    """
     dft.equilibrium_density_profile(bulk_density, fmt=fmt, solver=solver, **kw)
     N = float(dft.total_molecules)
     mu_gc = float(dft.mu)
@@ -55,20 +36,16 @@ def check_canonical(dft, bulk_density, fmt='ASWB', solver='anderson', **kw):
     mu_c = float(dft.mu)
     N_back = float(dft.total_molecules)
 
-    print("grande canonico : mu = %.10f   N = %.10f" % (mu_gc, N))
-    print("canonico (N fixo): mu = %.10f   N = %.10f" % (mu_c, N_back))
-    print("erro em mu = %.3e   erro em N = %.3e"
+    print("grand canonical : mu = %.10f   N = %.10f" % (mu_gc, N))
+    print("canonical (fixed N): mu = %.10f   N = %.10f" % (mu_c, N_back))
+    print("mu error = %.3e   erro em N = %.3e"
           % (abs(mu_c-mu_gc), abs(N_back-N)))
     return abs(mu_c-mu_gc), abs(N_back-N)
 
 
 def sweep_N(dft, N_values, rho_start=None, fmt='ASWB', solver='anderson',
             tol=1e-8, rho_bulk_guess=1e-8, logoutput=False, **solver_kw):
-    """Percorre N_values. Devolve (mu, P, Omega, N_real, ok).
 
-    N_values deve ir do poro vazio ao cheio em passos pequenos: passos
-    grandes perto da dobra pulam justamente o ramo que voce quer.
-    """
     n = len(N_values)
     mu = np.full(n, np.nan)
     P = np.full(n, np.nan)
@@ -88,12 +65,12 @@ def sweep_N(dft, N_values, rho_start=None, fmt='ASWB', solver='anderson',
                                             logoutput=logoutput, N_target=N,
                                             **solver_kw)
         except Exception as exc:
-            print("  N=%.6f levantou: %s" % (N, exc))
+            print("  N=%.6f raised an exception: %s" % (N, exc))
             continue
 
         err = float(dft.error)
         if not (np.isfinite(err) and err <= tol):
-            print("  N=%.6f nao convergiu (err=%.2e)" % (N, err))
+            print("  N=%.6f did not converge (err=%.2e)" % (N, err))
             continue
 
         mu[i] = float(dft.mu)
@@ -112,35 +89,78 @@ def sweep_N(dft, N_values, rho_start=None, fmt='ASWB', solver='anderson',
 
 
 def maxwell_construction(N, mu):
-    """Transicao de equilibrio por areas iguais no laco mu(N).
+    """Equilibrium transition by the equal-area construction in the $\mu(N)$ loop.
 
-    Usa a curva inteira em vez de comparar Omega de dois ramos
-    convergidos em separado, e da as espinodais de brinde.
+    Condition:   integral_{N1}^{N2} [ mu(N) - mu_eq ] dN = 0
+
+    where N1 and N2 are the points at which mu(N) = mu_eq on the TWO STABLE BRANCHES.
+    The integral is taken between N1 and N2, not over the entire array: outside this
+    interval, mu - mu_eq does not change sign, and the two external contributions
+    only cancel if the loop is symmetric. For an asymmetric loop -- which is the
+    realistic case -- integrating over the entire array shifts mu_eq.
+
+    This is equivalent to the DOUBLE-TANGENT construction in F(N): the line that
+    touches F at N1 and N2 has slope mu_eq, and the physical F in the interval is
+    given by this line (the convex envelope of F).
+
+    Independent verification: with the correct mu_eq, the two minima of
+    W(N) = F(N) - mu_eq N are at the SAME HEIGHT.
     """
+
     N = np.asarray(N, dtype=float)
     mu = np.asarray(mu, dtype=float)
-    good = np.isfinite(mu)
+    good = np.isfinite(mu) & np.isfinite(N)
     N, mu = N[good], mu[good]
+    o = np.argsort(N)
+    N, mu = N[o], mu[o]
 
-    dmu = np.diff(mu)
-    turns = np.where(np.sign(dmu[:-1]) != np.sign(dmu[1:]))[0]+1
+    d = np.diff(mu)
+    turns = np.where(np.sign(d[:-1]) != np.sign(d[1:]))[0]+1
     if len(turns) < 2:
         return {'hysteresis': False}
+    i1, i2 = turns[0], turns[-1]          # espinodais
+    mu_sp_ads, mu_sp_des = mu[i1], mu[i2]
 
-    i_ads, i_des = turns[0], turns[-1]
+    def area(m):
+        N1 = brentq(lambda z: np.interp(z, N[:i1+1], mu[:i1+1])-m, N[0], N[i1])
+        N2 = brentq(lambda z: np.interp(z, N[i2:], mu[i2:])-m, N[i2], N[-1])
+        s = (N >= N1) & (N <= N2)
+        Ns = np.r_[N1, N[s], N2]
+        ms = np.r_[m, mu[s], m]
+        return np.trapezoid(ms-m, Ns), N1, N2
 
-    def area(mu_try):
-        return np.trapezoid(mu-mu_try, N)
+    lo, hi = min(mu_sp_ads, mu_sp_des), max(mu_sp_ads, mu_sp_des)
+    mu_eq = brentq(lambda m: area(m)[0], lo+1e-12*(hi-lo), hi-1e-12*(hi-lo),
+                   xtol=1e-14)
+    _, N1, N2 = area(mu_eq)
 
-    lo, hi = min(mu[i_des], mu[i_ads]), max(mu[i_des], mu[i_ads])
-    for _ in range(200):
-        mid = 0.5*(lo+hi)
-        if area(mid) > 0:
-            lo = mid
-        else:
-            hi = mid
+    return {'hysteresis': True, 'mu_eq': mu_eq,
+            'N_coex_vap': N1, 'N_coex_liq': N2,
+            'mu_spinodal_ads': mu_sp_ads, 'N_spinodal_ads': N[i1],
+            'mu_spinodal_des': mu_sp_des, 'N_spinodal_des': N[i2]}
 
-    return {'hysteresis': True,
-            'mu_eq': 0.5*(lo+hi),
-            'mu_spinodal_ads': mu[i_ads], 'N_spinodal_ads': N[i_ads],
-            'mu_spinodal_des': mu[i_des], 'N_spinodal_des': N[i_des]}
+
+def check_maxwell(N, mu, Om, mu_eq):
+    """Independent check of the Maxwell construction, plus the barrier.
+
+    With the correct mu_eq the two minima of W = F - mu_eq N sit at the
+    SAME height, so dW should be ~0. The maximum between them is the
+    nucleation barrier, in kT -- the quantity the grand canonical route
+    cannot provide.
+    """
+    N = np.asarray(N, float)
+    W = np.asarray(Om, float)+np.asarray(mu, float)*N-mu_eq*N
+    d = np.diff(W)
+    t = np.where(np.sign(d[:-1]) != np.sign(d[1:]))[0]+1
+    # Classify by the SIGN of the derivative, not by position in the list:
+    # a numerical plateau at the top yields two indices for the same
+    # maximum, and then t[0], t[1], t[2] stops being (min, max, min).
+    mins = [i for i in t if d[i] > 0]
+    maxs = [i for i in t if d[i] < 0]
+    if len(mins) < 2 or len(maxs) < 1:
+        return None
+    i1, i2 = mins[0], mins[-1]
+    im = max(maxs, key=lambda i: W[i])
+    return dict(dW=W[i2]-W[i1],
+                barrier=W[im]-0.5*(W[i1]+W[i2]),
+                N_min1=N[i1], N_max=N[im], N_min2=N[i2])
