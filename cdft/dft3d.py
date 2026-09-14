@@ -235,7 +235,7 @@ class dft_core():
 
         self.rho.requires_grad=False
 
-    def euler_lagrange(self, lnrho, fmt):
+    def euler_lagrange(self, lnrho, fmt='ASWB'):
 
         self.helmholtz_functional_derivative(fmt)
 
@@ -310,9 +310,12 @@ class dft_core():
 
         self.total_molecules = (self.rho*self.valid).sum().cpu()*self.cell_volume
         Phi_id = self.rho*(torch.log(self.rho)-1.0)
-        self.F_id = Phi_id.sum()*self.cell_volume  
-        self.F = self.F_id+self.F_ex.detach() 
-        self.Omega = self.F+(self.rho*(self.Vext-self.mu)).sum()*self.cell_volume
-
+        self.F_id = Phi_id.sum()*self.cell_volume
+        self.F_ext = (self.rho*self.Vext).sum()*self.cell_volume
+ 
+        self.F_intr = self.F_id+self.F_ex.detach()
+        self.F = self.F_intr+self.F_ext
+        self.Omega = self.F-self.mu*self.total_molecules.to(self.F.device)
+ 
         del Phi_id
         self.N_target = None
