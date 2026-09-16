@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from scipy.special import spherical_jn
+from scipy.special import spherical_jn, sici
 from .lj_eos import lj_eos
 from .solvers import *
 
@@ -23,6 +23,36 @@ def yukawa_ft(k, sigma, epsilon, l):
                       (2*sigma**2*(2*k*pi*sigma*np.cos(2*k*pi*sigma)+l*np.sin(2*k*pi*sigma)))/(k*(l**2+(2*k*pi*sigma)**2))])
 
     return u_hat
+
+def lj_att_ft(k, sigma, epsilon, d=None):
+
+    d = sigma if d is None else d
+    k = np.asarray(k, dtype=float)
+    q = 2.0*pi*k
+    qd = q*d
+
+    u0 = 16.0*pi*epsilon*(sigma**12/(9.0*d**9)-sigma**6/(3.0*d**3))
+    u2 = 16.0*pi*epsilon*(sigma**12/(7.0*d**7)-sigma**6/d)
+
+    out = np.empty_like(q)
+    _SMALL = 1e-4
+    small = qd < _SMALL
+
+    out[small] = u0-(q[small]**2/6.0)*u2
+
+    qb = q[~small]
+    if qb.size:
+        qdb = qb*d
+        si, ci = sici(qdb)
+        S = {1: pi/2-si}
+        C = {1: -ci}
+        sin_qd, cos_qd = np.sin(qdb), np.cos(qdb)
+        for m in range(1, 11):
+            S[m+1] = (qb/m)*(C[m]+sin_qd/(qb*d**m))
+            C[m+1] = (qb/m)*(cos_qd/(qb*d**m)-S[m])
+        out[~small] = (16.0*pi*epsilon/qb)*(sigma**12*S[11]-sigma**6*S[5])
+
+    return out
 
 
 class dft_core():
@@ -72,7 +102,8 @@ class dft_core():
 
         l = np.array([2.544944560171334,15.464088962136243])
         eps = 1.857708161877173*self.epsilon*np.array([1,-1])
-        ulj_hat = (yukawa_ft(k,self.sigma,eps[0],l[0])+yukawa_ft(k,self.sigma,eps[1],l[1]))*lanczos_term
+        # ulj_hat = (yukawa_ft(k,self.sigma,eps[0],l[0])+yukawa_ft(k,self.sigma,eps[1],l[1]))*lanczos_term
+        ulj_hat = lj_att_ft(k, self.sigma, self.epsilon)*lanczos_term
 
         kvec = 2.0*pi*kz.copy()
 
