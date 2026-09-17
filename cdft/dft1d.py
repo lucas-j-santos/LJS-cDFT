@@ -13,14 +13,10 @@ torch.set_default_dtype(torch.float64)
 def lancsoz(k, M):
     return np.sinc(k/M)
 
-
 def yukawa_ft(k, sigma, epsilon, l):
 
-    u_hat = -epsilon*\
-        np.piecewise(k,[k==0.0,k>0.0],
-                     [4*pi*sigma**3*(l+1.0)/l**2,
-                      lambda k:
-                      (2*sigma**2*(2*k*pi*sigma*np.cos(2*k*pi*sigma)+l*np.sin(2*k*pi*sigma)))/(k*(l**2+(2*k*pi*sigma)**2))])
+    x = 2.0*pi*k*sigma
+    u_hat = -4.0*pi*epsilon*sigma**3*((1.0+l)*spherical_jn(0, x)-x*spherical_jn(1, x))/(x**2+l**2)
 
     return u_hat
 
