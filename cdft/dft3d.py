@@ -147,8 +147,8 @@ class dft_core():
 
         l = np.array([2.544944560171334,15.464088962136243])
         eps = 1.857708161877173*self.epsilon*np.array([1,-1])
-        # ulj_hat = (yukawa_ft(K,self.sigma,eps[0],l[0])+yukawa_ft(K,self.sigma,eps[1],l[1]))*lanczos_term
-        ulj_hat = lj_att_ft(K, self.sigma, self.epsilon)*lanczos_term
+        ulj_hat = (yukawa_ft(K,self.sigma,eps[0],l[0])+yukawa_ft(K,self.sigma,eps[1],l[1]))*lanczos_term
+        # ulj_hat = lj_att_ft(K, self.sigma, self.epsilon)*lanczos_term
 
         self.w2_hat = torch.tensor(w2_hat, device=device)
         self.w3_hat = torch.tensor(w3_hat, device=device)
