@@ -24,33 +24,25 @@ def yukawa_ft(k, sigma, epsilon, l):
 
     return u_hat
 
-def lj_att_ft(k, sigma, epsilon, d=None):
+def lj_att_ft(k, sigma, epsilon):
 
-    d = sigma if d is None else d
-    k = np.asarray(k, dtype=float)
-    q = 2.0*pi*k
-    qd = q*d
-
-    u0 = 16.0*pi*epsilon*(sigma**12/(9.0*d**9)-sigma**6/(3.0*d**3))
-    u2 = 16.0*pi*epsilon*(sigma**12/(7.0*d**7)-sigma**6/d)
+    q = 2.0*pi*np.abs(np.asarray(k, dtype=float))
 
     out = np.empty_like(q)
-    _SMALL = 1e-4
-    small = qd < _SMALL
-
-    out[small] = u0-(q[small]**2/6.0)*u2
-
-    qb = q[~small]
+    zero = (q == 0.0)
+    out[zero] = 16.0*pi*epsilon*(sigma**12/(9.0*sigma**9)-sigma**6/(3.0*sigma**3))
+    qb = q[~zero]
+    
     if qb.size:
-        qdb = qb*d
-        si, ci = sici(qdb)
+        qd = qb*sigma
+        si, ci = sici(qd)
         S = {1: pi/2-si}
         C = {1: -ci}
-        sin_qd, cos_qd = np.sin(qdb), np.cos(qdb)
+        sin_qd, cos_qd = np.sin(qd), np.cos(qd)
         for m in range(1, 11):
-            S[m+1] = (qb/m)*(C[m]+sin_qd/(qb*d**m))
-            C[m+1] = (qb/m)*(cos_qd/(qb*d**m)-S[m])
-        out[~small] = (16.0*pi*epsilon/qb)*(sigma**12*S[11]-sigma**6*S[5])
+            S[m+1] = (qb/m)*(C[m]+sin_qd/(qb*sigma**m))
+            C[m+1] = (qb/m)*(cos_qd/(qb*sigma**m)-S[m])
+        out[~zero] = (16.0*pi*epsilon/qb)*(sigma**12*S[11]-sigma**6*S[5])
 
     return out
 
