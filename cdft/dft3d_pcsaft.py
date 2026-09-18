@@ -8,14 +8,12 @@ torch.set_default_dtype(torch.float64)
 psi = 1.3862
 pi = np.pi
 
-
 def lancsoz(kx, ky, kz, M):
     return np.sinc(kx/M[0])*np.sinc(ky/M[1])*np.sinc(kz/M[2])
 
-
 class dft_core():
 
-    def __init__(self, pcsaft_parameters, temperature, system_size, points, device):
+    def __init__(self, pcsaft_parameters, temperature, system_size, angles, points, device):
 
         self.pcsaft_parameters = pcsaft_parameters
         self.T = temperature
@@ -58,24 +56,72 @@ class dft_core():
         self.npoints = self.Nc*int(np.prod(self.grid_shape))
         self.sqrt_npoints = np.sqrt(self.npoints)
 
+        if angles is not None:
+            self.alpha, self.beta, self.gamma = angles
+            self.orthogonal = False
+
+            cos_alpha = np.cos(self.alpha)
+            cos_beta = np.cos(self.beta)
+            cos_gamma = np.cos(self.gamma)
+            sin_gamma = np.sin(self.gamma)
+
+            zeta = (cos_alpha-cos_beta*cos_gamma)/sin_gamma
+
+            self.H = torch.tensor([
+                [1.0, cos_gamma, cos_beta],
+                [0.0, sin_gamma, zeta],
+                [0.0, 0.0, np.sqrt(1.0-cos_beta**2-zeta**2)]
+            ], device=device)
+
+            self.H_T = self.H.T
+            self.H_inv_T = torch.linalg.inv(self.H_T)
+            self.det_H = sin_gamma*np.sqrt(1.0-cos_beta**2-zeta**2)
+        else:
+            self.orthogonal = True
+            self.H = torch.tensor([
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0]
+            ], device=device)
+            self.det_H = 1.0
+
         self.system_volume = self.system_size.prod()
         self.cell_size = system_size/points
         self.cell_volume = self.cell_size.prod()
 
+        # Spatial grid in skewed coordinates
         n = self.grid_shape
-        self.x = torch.linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], n[0], device=device)
-        self.y = torch.linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], n[1], device=device)
-        self.z = torch.linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], n[2], device=device)
-        self.X, self.Y, self.Z = torch.meshgrid(self.x, self.y, self.z, indexing='ij')
+        u = torch.linspace(0.5*self.cell_size[0], system_size[0]-0.5*self.cell_size[0], n[0], device=device)
+        v = torch.linspace(0.5*self.cell_size[1], system_size[1]-0.5*self.cell_size[1], n[1], device=device)
+        w = torch.linspace(0.5*self.cell_size[2], system_size[2]-0.5*self.cell_size[2], n[2], device=device)
+        self.U, self.V, self.W = torch.meshgrid(u, v, w, indexing='ij')
 
-        kx = np.fft.fftfreq(n[0], d=self.cell_size[0])
-        ky = np.fft.fftfreq(n[1], d=self.cell_size[1])
-        kz = np.fft.rfftfreq(n[2], d=self.cell_size[2])
-        Kx, Ky, Kz = np.meshgrid(kx, ky, kz, indexing='ij')
+        # Transform to cartesian coordinates
+        s = torch.stack([self.U, self.V, self.W], dim=0)
+        r = torch.einsum('ij,j...->i...', self.H, s)
+        self.X, self.Y, self.Z = r[0], r[1], r[2]
+
+        ku = np.fft.fftfreq(n[0], d=self.cell_size[0])
+        kv = np.fft.fftfreq(n[1], d=self.cell_size[1])
+        kw = np.fft.rfftfreq(n[2], d=self.cell_size[2])
+
+        # Transform to cartesian frequency space
+        Ku, Kv, Kw = np.meshgrid(ku, kv, kw, indexing='ij')
+
+        if self.orthogonal:
+            Kx = Ku
+            Ky = Kv
+            Kz = Kw
+            del self.U, self.V, self.W
+        else:
+            Kx = Ku
+            Ky = (Kv-Ku*cos_gamma)/sin_gamma
+            Kz = (Ku*(zeta*cos_gamma/sin_gamma-cos_beta)\
+                    -Kv*zeta/sin_gamma+Kw)/np.sqrt(1.0-cos_beta**2-zeta**2)
+
         K = np.sqrt(Kx**2+Ky**2+Kz**2)
-
         kcut = (np.asarray(self.grid_shape)//2+1)/self.system_size
-        lanczos_term = lancsoz(Kx, Ky, Kz, kcut)
+        lanczos_term = lancsoz(Ku, Kv, Kw, kcut)
         Rn = d0.numpy()*0.5 if hasattr(d0, 'numpy') else np.asarray(0.5*d0)
 
         shape_k = K.shape
@@ -115,7 +161,7 @@ class dft_core():
         self.wdisp_hat = torch.tensor(wdisp_hat, device=device)
         self.kvec = torch.tensor(kvec, device=device)
 
-        del kx, ky, kz, Kx, Ky, Kz, K, lanczos_term, kvec
+        del ku, kv, kw, Kx, Ky, Kz, K, lanczos_term, kvec
         del w2_hat, w3_hat, w2hc_hat, w3hc_hat, wdisp_hat
 
         # broadcast helpers
@@ -184,7 +230,7 @@ class dft_core():
 
         # ---- Hard-Chain --------------------------------------------
         if self.spherical:
-            Phi_hc = torch.zeros_like(self.Phi_hs)
+            Phi_hc = torch.zeros_like(Phi_hs)
         else:
             zeta2 = (pi/6.)*torch.einsum('i...,i->...', self.n3_hc, self.m*self.d**2)
             zeta3 = ((pi/6.)*torch.einsum('i...,i->...', self.n3_hc, self.m*self.d**3)) \

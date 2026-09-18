@@ -52,13 +52,13 @@ class dft_core():
         self.points = points
         self.device = device
 
+        self.kB = 1.380649e-23
+        self.NA = 6.02214076e23
+
         # Real-space grid shape, used by every irfftn call.
         self.shape = tuple(int(p) for p in points)
         self.npoints = int(np.prod(self.shape))
         self.sqrt_npoints = np.sqrt(self.npoints)
-
-        self.kB = 1.380649e-23
-        self.NA = 6.02214076e23
 
         if angles is not None:
             self.alpha, self.beta, self.gamma = angles
