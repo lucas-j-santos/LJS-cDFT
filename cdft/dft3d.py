@@ -7,7 +7,6 @@ from .solvers import *
 torch.set_default_dtype(torch.float64)
 pi = np.pi
 
-
 def lancsoz(kx, ky, kz, M):
     return np.sinc(kx/M[0])*np.sinc(ky/M[1])*np.sinc(kz/M[2])
 
@@ -17,7 +16,6 @@ def yukawa_ft(k, sigma, epsilon, l):
     u_hat = -4.0*pi*epsilon*sigma**3*((1.0+l)*spherical_jn(0, x)-x*spherical_jn(1, x))/(x**2+l**2)
 
     return u_hat
-
 
 def lj_att_ft(k, sigma, epsilon):
 

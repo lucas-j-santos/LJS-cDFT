@@ -4,11 +4,8 @@ from scipy.special import spherical_jn, sici
 from .lj_eos import lj_eos
 from .solvers import *
 
-kB = 1.380649e-23
-NA = 6.02214076e23
-
-pi = np.pi
 torch.set_default_dtype(torch.float64)
+pi = np.pi
 
 def lancsoz(k, M):
     return np.sinc(k/M)
@@ -41,7 +38,6 @@ def lj_att_ft(k, sigma, epsilon):
         out[~zero] = (16.0*pi*epsilon/qb)*(sigma**12*S[11]-sigma**6*S[5])
 
     return out
-
 
 class dft_core():
 
