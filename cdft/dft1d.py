@@ -7,8 +7,6 @@ from .solvers import *
 torch.set_default_dtype(torch.float64)
 pi = np.pi
 
-rhostar_max = 1.2
-
 def lancsoz(k, M):
     return np.sinc(k/M)
 
@@ -116,10 +114,10 @@ class dft_core():
 
         # n3 and n2vec share the same product rho_hat*w3_hat.
         rho_w3 = self.rho_hat*self.w3_hat
-        self.n3 = torch.fft.irfft(rho_w3, n=self.npoints)
+        self.n3 = torch.fft.irfft(rho_w3, n=self.npoints).clamp(max=1.0-1e-16)
         self.n2vec = torch.fft.irfft(-1j*(self.kvec*rho_w3), n=self.npoints)
 
-        self.rhobar = torch.fft.irfft(self.rho_hat*self.watt_hat, n=self.npoints)
+        self.rhobar = torch.fft.irfft(self.rho_hat*self.watt_hat, n=self.npoints).clamp(max=1.2/self.sigma**3)
         self.ulj = torch.fft.irfft(self.rho_hat*self.ulj_hat, n=self.npoints)
 
     def helmholtz_functional(self,fmt):
@@ -162,13 +160,12 @@ class dft_core():
         Phi_mfa = 0.5*self.rho*self.ulj/self.T
         self.F_mfa = Phi_mfa.sum()*self.cell_size
 
-        rhobar_c = self.rhobar.clamp(max=rhostar_max/self.sigma**3)
-        eta = rhobar_c*(pi*self.d**3/6.0)
+        eta = (self.rhobar*(pi*self.d**3/6.0))
         one_minus_eta = 1.0-eta
-        eos_term = self.eos.helmholtz_energy(rhobar_c)
+        eos_term = self.eos.helmholtz_energy(self.rhobar)
         correction_term_hs = (4.0*eta-3.0*eta*eta)/(one_minus_eta*one_minus_eta)
-        correction_term_mfa = -(16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*rhobar_c
-        Phi_corr = rhobar_c*(eos_term-correction_term_hs-correction_term_mfa)
+        correction_term_mfa = -(16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
+        Phi_corr = self.rhobar*(eos_term-correction_term_hs-correction_term_mfa)
         self.F_corr = Phi_corr.sum()*self.cell_size 
 
         del Phi_mfa, Phi_corr
