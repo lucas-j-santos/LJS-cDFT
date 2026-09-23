@@ -42,7 +42,7 @@ class lj_eos():
         self.sigma = self.parameters['sigma']
         self.epsilon = self.parameters['epsilon']
         self.T = temperature
-        self.Tstar = self.T/self.epsilon
+        self.Tstar = self.T/self.epsilon # 0.7 <= T* <= 6
         self.d = self.sigma*(1+0.2977*self.Tstar)/(1+0.33163*self.Tstar+1.0477e-3*self.Tstar**2)
 
         a = acoef(self.Tstar)

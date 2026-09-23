@@ -6,6 +6,7 @@ from .solvers import *
 
 torch.set_default_dtype(torch.float64)
 pi = np.pi
+rhostar_max = 1.2
 
 def lancsoz(kx, ky, kz, M):
     return np.sinc(kx/M[0])*np.sinc(ky/M[1])*np.sinc(kz/M[2])
@@ -232,12 +233,13 @@ class dft_core():
         Phi_mfa = 0.5*self.rho*self.ulj/self.T
         self.F_mfa = Phi_mfa.sum()*self.cell_volume 
 
-        eta = (self.rhobar*(pi*self.d**3/6.0)).clamp(max=1.0-1e-16)
+        rhobar_c = self.rhobar.clamp(max=rhostar_max/self.sigma**3)
+        eta = rhobar_c*(pi*self.d**3/6.0)
         one_minus_eta = 1.0-eta
-        eos_term = self.eos.helmholtz_energy(self.rhobar)
+        eos_term = self.eos.helmholtz_energy(rhobar_c)
         correction_term_hs = (4.0*eta-3.0*eta*eta)/(one_minus_eta*one_minus_eta)
-        correction_term_mfa = -(16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*self.rhobar
-        Phi_corr = self.rhobar*(eos_term-correction_term_hs-correction_term_mfa)
+        correction_term_mfa = -(16./9.)*pi*(self.epsilon/self.T)*self.sigma**3*rhobar_c
+        Phi_corr = rhobar_c*(eos_term-correction_term_hs-correction_term_mfa)
         self.F_corr = Phi_corr.sum()*self.cell_volume 
 
         del Phi_mfa, Phi_corr
