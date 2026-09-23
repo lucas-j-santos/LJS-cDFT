@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from scipy.special import spherical_jn
-from .pcsaft_eos import pcsaft, mixing_tensors, horner
+from .pcsaft_eos import pcsaft, mixing_tensors, horner, normalize_q
 from .solvers import *
 
 torch.set_default_dtype(torch.float64)
@@ -27,7 +27,7 @@ class dft_core():
         m0 = pcsaft_parameters['m']
         sigma0 = pcsaft_parameters['sigma']
         epsilon0 = pcsaft_parameters['epsilon']
-        self.q = pcsaft_parameters.get('q', None)
+        self.q = normalize_q(pcsaft_parameters.get('q', None))
         self.Nc = len(m0)
 
         d0 = sigma0*(1.0-0.12*np.exp(-3.0*epsilon0/self.T))
@@ -85,9 +85,14 @@ class dft_core():
             ], device=device)
             self.det_H = 1.0
 
-        self.system_volume = self.system_size.prod()
+        # det_H e o fator de volume da celula inclinada (1 se ortogonal).
+        # Sem ele, N, F e Omega saiam multiplicados por 1/det_H -- +15.5 %
+        # numa celula hexagonal (gama = 120 graus). O perfil de densidade
+        # nao era afetado: as convolucoes e o residuo de Euler-Lagrange nao
+        # dependem desse volume.
+        self.system_volume = self.system_size.prod()*self.det_H
         self.cell_size = system_size/points
-        self.cell_volume = self.cell_size.prod()
+        self.cell_volume = self.cell_size.prod()*self.det_H
 
         # Spatial grid in skewed coordinates
         n = self.grid_shape
@@ -147,12 +152,20 @@ class dft_core():
 
         kvec = 2.0*pi*np.stack([Kx, Ky, Kz])
         
-        if n[0] % 2 == 0:
-            kvec[0, n[0]//2, :, :] = 0.0
-        if n[1] % 2 == 0:
-            kvec[1, :, n[1]//2, :] = 0.0
-        if n[2] % 2 == 0:
-            kvec[2, :, :, -1] = 0.0
+        if self.orthogonal:
+            if n[0] % 2 == 0:
+                kvec[0, n[0]//2, :, :] = 0.0
+            if n[1] % 2 == 0:
+                kvec[1, :, n[1]//2, :] = 0.0
+            if n[2] % 2 == 0:
+                kvec[2, :, :, -1] = 0.0
+        else:
+            if n[0] % 2 == 0:
+                kvec[:, n[0]//2, :, :] = 0.0
+            if n[1] % 2 == 0:
+                kvec[:, :, n[1]//2, :] = 0.0
+            if n[2] % 2 == 0:
+                kvec[:, :, :, -1] = 0.0
 
         self.w2_hat = torch.tensor(w2_hat, device=device)
         self.w3_hat = torch.tensor(w3_hat, device=device)

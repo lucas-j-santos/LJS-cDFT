@@ -49,26 +49,29 @@ cq = torch.tensor([
     [0.0, 0.0, 0.0]
     ])
 
+def normalize_q(q):
 
-def mixing_tensors(m, sigma, epsilon, T, q2=None, device=None):
-    """Combining rules and every constant that depends only on (parameters, T).
+    if q is None:
+        return None
+    q = torch.as_tensor(q, dtype=torch.get_default_dtype())
+    if bool((q == 0).all()):
+        return None
+    return q
 
-    Shared by pcsaft and by the DFT modules so the two cannot drift apart.
-    Returns a dict of tensors already on `device`.
-    """
+def mixing_tensors(m, sigma, epsilon, T, q2=None, device=None, m_cap=None):
+
     m = m.to(device=device)
     sigma = sigma.to(device=device)
     epsilon = epsilon.to(device=device)
     Nc = len(m)
 
-    # vectorised combining rules (the original triple Python loop was O(Nc^3)
-    # with one kernel launch per element)
-    m_ij = torch.minimum(torch.sqrt(m[:, None]*m[None, :]),
-                         torch.full((Nc, Nc), 2.0, device=device))
+    m_ij = torch.sqrt(m[:, None]*m[None, :])
     sigma_ij = 0.5*(sigma[:, None]+sigma[None, :])
     epsilon_ij = torch.sqrt(epsilon[:, None]*epsilon[None, :])
-    m_ijk = torch.minimum((m[:, None, None]*m[None, :, None]*m[None, None, :])**(1.0/3.0),
-                          torch.full((Nc, Nc, Nc), 2.0, device=device))
+    m_ijk = (m[:, None, None]*m[None, :, None]*m[None, None, :])**(1.0/3.0)
+    if m_cap is not None:
+        m_ij = m_ij.clamp(max=m_cap)
+        m_ijk = m_ijk.clamp(max=m_cap)
     eps_ij_T = epsilon_ij/T
 
     r_ij = (m_ij-1.0)/m_ij
@@ -133,7 +136,7 @@ class pcsaft():
         self.m = parameters['m']
         self.sigma = parameters['sigma']
         self.epsilon = parameters['epsilon']
-        self.q = parameters.get('q', None)
+        self.q = normalize_q(parameters.get('q', None))
         self.T = temperature
         self.Nc = len(self.m)
         self.device = device
@@ -159,8 +162,6 @@ class pcsaft():
         self.sigma = C['sigma']
         self.epsilon = C['epsilon']
         self.half_d = 0.5*self.d
-        # device efetivo dos parametros (nunca None): tudo que entra na EOS
-        # e trazido para ca antes de ser usado
         self.device = self.m.device
 
     # -----------------------------------------------------------------
