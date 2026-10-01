@@ -18,7 +18,7 @@ def bulk_density_from_mu(eos, mu, rho_guess, tol=1e-12, max_it=200):
             break
         r2 = r1-f1*(r1-r0)/(f1-f0)
         if r2 <= 0.0:
-            r2 = 0.5*r1                      # mantem positivo
+            r2 = 0.5*r1           
         r0, f0, r1 = r1, f1, r2
         f1 = f(r1)
         if abs(f1) < tol:
