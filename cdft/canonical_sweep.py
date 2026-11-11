@@ -1,6 +1,13 @@
+import os
+
 import numpy as np
+import pandas as pd
 from scipy.optimize import brentq
 import torch
+
+CSV_COLUMNS = ['N_target', 'N_real', 'mu', 'P_Pa', 'Omega',
+               'F_intr', 'F_ext', 'F', 'error', 'iterations']
+
 
 def bulk_density_from_mu(eos, mu, rho_guess, tol=1e-12, max_it=200):
 
@@ -18,7 +25,7 @@ def bulk_density_from_mu(eos, mu, rho_guess, tol=1e-12, max_it=200):
             break
         r2 = r1-f1*(r1-r0)/(f1-f0)
         if r2 <= 0.0:
-            r2 = 0.5*r1           
+            r2 = 0.5*r1
         r0, f0, r1 = r1, f1, r2
         f1 = f(r1)
         if abs(f1) < tol:
@@ -44,14 +51,30 @@ def check_canonical(dft, bulk_density, fmt='ASWB', solver='anderson', **kw):
 
 
 def sweep_N(dft, N_values, rho_start=None, fmt='ASWB', solver='anderson',
-            tol=1e-8, rho_bulk_guess=1e-8, logoutput=False, **solver_kw):
+            tol=1e-8, rho_bulk_guess=1e-8, logoutput=False,
+            csv_path='sweep_N.csv', overwrite=True, **solver_kw):
+    """Canonical sweep over N.
 
+    Each converged point is written to csv_path as soon as it converges (one
+    row per point), so an interrupted run keeps everything already computed.
+    Columns: see CSV_COLUMNS.
+
+    csv_path : output file; None disables writing.
+    overwrite: True recreates the file (header only) at the start;
+               False appends to an existing file (to resume a run).
+
+    Points that raise or do not converge are only printed, never written.
+    The return value is unchanged: (mu, P, Om, N_real, ok).
+    """
     n = len(N_values)
     mu = np.full(n, np.nan)
     P = np.full(n, np.nan)
     Om = np.full(n, np.nan)
     N_real = np.full(n, np.nan)
     ok = np.zeros(n, dtype=bool)
+
+    if csv_path is not None and (overwrite or not os.path.exists(csv_path)):
+        pd.DataFrame(columns=CSV_COLUMNS).to_csv(csv_path, index=False)
 
     if rho_start is not None:
         dft.rho = rho_start.clone()
@@ -81,6 +104,17 @@ def sweep_N(dft, N_values, rho_start=None, fmt='ASWB', solver='anderson',
         ok[i] = True
         guess = dft.rho.detach().clone()
 
+        if csv_path is not None:
+            row = {'N_target': float(N), 'N_real': N_real[i], 'mu': mu[i],
+                   'P_Pa': P[i], 'Omega': Om[i],
+                   'F_intr': float(dft.F_intr), 'F_ext': float(dft.F_ext),
+                   'F': float(dft.F), 'error': err,
+                   'iterations': int(getattr(dft, 'it', -1))}
+            # mode 'a' opens, writes and closes: the row is on disk on return
+            pd.DataFrame([row], columns=CSV_COLUMNS).to_csv(
+                csv_path, mode='a', header=False, index=False,
+                float_format='%.12e')
+
         if logoutput:
             print("N=%.6f  mu=%.6f  P=%.6e Pa  |N-N_alvo|=%.2e"
                   % (N, mu[i], P[i], abs(N_real[i]-N)))
@@ -88,8 +122,21 @@ def sweep_N(dft, N_values, rho_start=None, fmt='ASWB', solver='anderson',
     return mu, P, Om, N_real, ok
 
 
+def read_sweep(csv_path):
+    """Read one or more sweep_N CSV files back, sorted by N_real, with
+    duplicate N_target rows (e.g. a resumed run) reduced to the last one.
+
+    csv_path: a path or a list of paths (e.g. an adsorption and a desorption
+    sweep written to separate files).
+    """
+    paths = [csv_path] if isinstance(csv_path, (str, os.PathLike)) else csv_path
+    df = pd.concat([pd.read_csv(p) for p in paths], ignore_index=True)
+    df = df.drop_duplicates(subset='N_target', keep='last')
+    return df.sort_values('N_real').reset_index(drop=True)
+
+
 def maxwell_construction(N, mu):
-    """Equilibrium transition by the equal-area construction in the $\mu(N)$ loop.
+    """Equilibrium transition by the equal-area construction in the mu(N) loop.
 
     Condition:   integral_{N1}^{N2} [ mu(N) - mu_eq ] dN = 0
 
@@ -129,9 +176,19 @@ def maxwell_construction(N, mu):
         ms = np.r_[m, mu[s], m]
         return np.trapezoid(ms-m, Ns), N1, N2
 
-    lo, hi = min(mu_sp_ads, mu_sp_des), max(mu_sp_ads, mu_sp_des)
-    mu_eq = brentq(lambda m: area(m)[0], lo+1e-12*(hi-lo), hi-1e-12*(hi-lo),
-                   xtol=1e-14)
+    # mu_eq must be reachable on BOTH stable branches: the low-N branch spans
+    # [mu[0], mu[i1]] and the high-N branch [mu[i2], mu[-1]]. Using only the
+    # spinodals as the bracket fails when the sweep stops before a branch
+    # reaches the other spinodal's mu.
+    lo = max(min(mu[0], mu[i1]), min(mu[i2], mu[-1]))
+    hi = min(max(mu[0], mu[i1]), max(mu[i2], mu[-1]))
+    eps = 1e-12*(hi-lo)
+    if not hi > lo or area(lo+eps)[0]*area(hi-eps)[0] > 0.0:
+        raise ValueError(
+            "the sweep does not extend far enough along the stable branches "
+            "to close the equal-area construction: extend N_values below "
+            "N=%.6g and/or above N=%.6g" % (N[0], N[-1]))
+    mu_eq = brentq(lambda m: area(m)[0], lo+eps, hi-eps, xtol=1e-14)
     _, N1, N2 = area(mu_eq)
 
     return {'hysteresis': True, 'mu_eq': mu_eq,
@@ -140,16 +197,22 @@ def maxwell_construction(N, mu):
             'mu_spinodal_des': mu_sp_des, 'N_spinodal_des': N[i2]}
 
 
-def check_maxwell(N, mu, Om, mu_eq):
+def check_maxwell(N, mu, Om, mu_eq, F=None):
     """Independent check of the Maxwell construction, plus the barrier.
 
     With the correct mu_eq the two minima of W = F - mu_eq N sit at the
     SAME height, so dW should be ~0. The maximum between them is the
     nucleation barrier, in kT -- the quantity the grand canonical route
     cannot provide.
+
+    F: optional total Helmholtz energy (the 'F' column of sweep_N's CSV).
+       If given it is used directly; otherwise F = Omega + mu N, which is
+       the same quantity reconstructed from Omega.
     """
     N = np.asarray(N, float)
-    W = np.asarray(Om, float)+np.asarray(mu, float)*N-mu_eq*N
+    if F is None:
+        F = np.asarray(Om, float)+np.asarray(mu, float)*N
+    W = np.asarray(F, float)-mu_eq*N
     d = np.diff(W)
     t = np.where(np.sign(d[:-1]) != np.sign(d[1:]))[0]+1
     # Classify by the SIGN of the derivative, not by position in the list:
