@@ -5,8 +5,21 @@ import pandas as pd
 from scipy.optimize import brentq
 import torch
 
+
+# colunas do CSV escrito por sweep_N, na ordem em que aparecem no arquivo
 CSV_COLUMNS = ['N_target', 'N_real', 'mu', 'P_Pa', 'Omega',
-               'F_intr', 'F_ext', 'F', 'error', 'iterations']
+               'F_intr', 'F_ext', 'F', 'error', 'iterations',
+               'attempt', 'solver']
+
+# Fallbacks tried, in order, when a point does not converge with the solver
+# passed to sweep_N. Each attempt restarts from the same initial profile (the
+# last converged one), never from what a failed attempt left behind.
+DEFAULT_ATTEMPTS = [
+    dict(solver='fire', alpha0=0.2, dt=0.02, max_it=20000),
+    dict(solver='fire', alpha0=0.2, dt=0.01, max_it=40000),
+    dict(solver='fire', alpha0=0.1, dt=0.005, max_it=40000),
+    dict(solver='picard', alpha0=0.02, max_it=50000),
+]
 
 
 def bulk_density_from_mu(eos, mu, rho_guess, tol=1e-12, max_it=200):
@@ -50,9 +63,38 @@ def check_canonical(dft, bulk_density, fmt='ASWB', solver='anderson', **kw):
     return abs(mu_c-mu_gc), abs(N_back-N)
 
 
+def solve_point_N(dft, N, guess, attempts, fmt='ASWB', logoutput=False):
+    """Canonical solve at fixed N, trying each entry of `attempts` in order.
+
+    Every attempt starts from a copy of `guess`. Returns (ok, err, k) where k
+    is the index of the attempt that converged (or of the last one tried).
+    An attempt counts as converged only if its final error is finite and
+    <= its own tol.
+    """
+    err = float('nan')
+    for k, kw in enumerate(attempts):
+        dft.rho = guess.clone()
+        try:
+            dft.equilibrium_density_profile(fmt=fmt, logoutput=logoutput,
+                                            N_target=N, **kw)
+        except Exception as exc:
+            print("  N=%.6f attempt %d (%s) raised: %s"
+                  % (N, k, kw.get('solver'), exc))
+            continue
+        err = float(dft.error)
+        if np.isfinite(err) and err <= kw['tol']:
+            return True, err, k
+        if k+1 < len(attempts):
+            print("  N=%.6f attempt %d (%s) did not converge (err=%.2e), "
+                  "trying %s" % (N, k, kw.get('solver'), err,
+                                 attempts[k+1].get('solver')))
+    return False, err, len(attempts)-1
+
+
 def sweep_N(dft, N_values, rho_start=None, fmt='ASWB', solver='anderson',
             tol=1e-8, rho_bulk_guess=1e-8, logoutput=False,
-            csv_path='sweep_N.csv', overwrite=True, **solver_kw):
+            csv_path='sweep_N.csv', overwrite=True, attempts=None,
+            **solver_kw):
     """Canonical sweep over N.
 
     Each converged point is written to csv_path as soon as it converges (one
@@ -63,9 +105,27 @@ def sweep_N(dft, N_values, rho_start=None, fmt='ASWB', solver='anderson',
     overwrite: True recreates the file (header only) at the start;
                False appends to an existing file (to resume a run).
 
-    Points that raise or do not converge are only printed, never written.
+    attempts : list of solver settings tried in order at each point until
+               one converges. None (default) means: first the solver given
+               by `solver`, `tol` and **solver_kw, then DEFAULT_ATTEMPTS.
+               Pass your own list to change this; an entry without 'tol'
+               gets `tol`. To disable fallbacks: attempts=[dict(
+               solver='anderson', tol=1e-8)].
+               The CSV records which attempt converged ('attempt', 'solver').
+
+    Points where every attempt fails are only printed, never written.
     The return value is unchanged: (mu, P, Om, N_real, ok).
     """
+    primary = dict(solver=solver, tol=tol, **solver_kw)
+    if attempts is None:
+        attempts = [primary]+[dict(a) for a in DEFAULT_ATTEMPTS]
+    else:
+        attempts = [dict(a) for a in attempts]
+    if not attempts:
+        raise ValueError("attempts must contain at least one solver setting")
+    for a in attempts:
+        a.setdefault('tol', tol)
+
     n = len(N_values)
     mu = np.full(n, np.nan)
     P = np.full(n, np.nan)
@@ -82,18 +142,11 @@ def sweep_N(dft, N_values, rho_start=None, fmt='ASWB', solver='anderson',
     rb = rho_bulk_guess
 
     for i, N in enumerate(N_values):
-        dft.rho = guess.clone()
-        try:
-            dft.equilibrium_density_profile(fmt=fmt, solver=solver, tol=tol,
-                                            logoutput=logoutput, N_target=N,
-                                            **solver_kw)
-        except Exception as exc:
-            print("  N=%.6f raised an exception: %s" % (N, exc))
-            continue
-
-        err = float(dft.error)
-        if not (np.isfinite(err) and err <= tol):
-            print("  N=%.6f did not converge (err=%.2e)" % (N, err))
+        converged, err, k = solve_point_N(dft, N, guess, attempts, fmt=fmt,
+                                          logoutput=logoutput)
+        if not converged:
+            print("  N=%.6f did not converge with any of the %d attempts "
+                  "(last err=%.2e)" % (N, len(attempts), err))
             continue
 
         mu[i] = float(dft.mu)
@@ -109,15 +162,16 @@ def sweep_N(dft, N_values, rho_start=None, fmt='ASWB', solver='anderson',
                    'P_Pa': P[i], 'Omega': Om[i],
                    'F_intr': float(dft.F_intr), 'F_ext': float(dft.F_ext),
                    'F': float(dft.F), 'error': err,
-                   'iterations': int(getattr(dft, 'it', -1))}
+                   'iterations': int(getattr(dft, 'it', -1)),
+                   'attempt': k, 'solver': attempts[k]['solver']}
             # mode 'a' opens, writes and closes: the row is on disk on return
             pd.DataFrame([row], columns=CSV_COLUMNS).to_csv(
                 csv_path, mode='a', header=False, index=False,
                 float_format='%.12e')
 
         if logoutput:
-            print("N=%.6f  mu=%.6f  P=%.6e Pa  |N-N_alvo|=%.2e"
-                  % (N, mu[i], P[i], abs(N_real[i]-N)))
+            print("N=%.6f  mu=%.6f  P=%.6e Pa  |N-N_alvo|=%.2e  [%s]"
+                  % (N, mu[i], P[i], abs(N_real[i]-N), attempts[k]['solver']))
 
     return mu, P, Om, N_real, ok
 
